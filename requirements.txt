@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+yfinance==0.2.50
+pandas==2.2.3
+numpy==2.2.5
+anthropic==0.40.0
+python-dotenv==1.0.1
+requests==2.32.3
+pyportfolioopt>=1.5.5
+sse-starlette>=2.1.0

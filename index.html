@@ -1,0 +1,1929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SGX Portfolio Risk Lens</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0a;
+      --card:     #141414;
+      --border:   #222222;
+      --accent:   #04724D;
+      --accent2:  #05a06c;
+      --text:     #e8e8e8;
+      --muted:    #888888;
+      --danger:   #e05c5c;
+      --warn:     #d4973a;
+      --bull:     #04724D;
+      --bear:     #d4973a;
+      --crisis:   #c0392b;
+      --sidebar:  320px;
+      --radius:   8px;
+      --font:     'Inter', system-ui, sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
+
+    #app { display: flex; height: 100vh; overflow: hidden; }
+
+    #sidebar {
+      width: var(--sidebar);
+      min-width: var(--sidebar);
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #sidebar-header {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    #sidebar-header h1 { font-size: 15px; font-weight: 700; color: var(--accent2); letter-spacing: 0.03em; }
+    #sidebar-header p  { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    #sidebar-body  { flex: 1; overflow-y: auto; padding: 14px; }
+    #sidebar-footer{ padding: 12px 14px; border-top: 1px solid var(--border); }
+
+    .period-row { display: flex; gap: 6px; margin-bottom: 14px; }
+    .period-btn {
+      flex: 1; padding: 6px 0; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--muted); cursor: pointer; font-size: 12px; font-family: var(--font);
+      transition: all 0.15s;
+    }
+    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .period-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+    .section-label {
+      font-size: 10px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
+    }
+    #holdings-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    #holdings-table th {
+      font-size: 10px; color: var(--muted); font-weight: 500;
+      text-align: left; padding: 4px 4px 6px; border-bottom: 1px solid var(--border);
+    }
+    #holdings-table td { padding: 5px 4px; font-size: 12px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
+    .ticker-cell { font-weight: 600; color: var(--accent2); font-size: 11px; }
+    .weight-input {
+      width: 52px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); font-size: 12px;
+      font-family: var(--font); padding: 3px 6px; text-align: right;
+    }
+    .weight-input:focus { outline: none; border-color: var(--accent); }
+    .remove-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 14px; padding: 2px 4px; border-radius: 3px; transition: color 0.15s;
+    }
+    .remove-btn:hover { color: var(--danger); }
+
+    .add-row { display: flex; gap: 6px; margin-top: 8px; margin-bottom: 14px; }
+    .add-input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-family: var(--font);
+      font-size: 12px; padding: 7px 10px;
+    }
+    .add-input:focus { outline: none; border-color: var(--accent); }
+    .add-input::placeholder { color: var(--muted); }
+
+    #weight-total { font-size: 12px; text-align: right; padding: 4px 0; margin-bottom: 10px; }
+    #weight-total span { font-weight: 700; }
+
+    .btn {
+      display: block; width: 100%; padding: 10px;
+      border-radius: var(--radius); border: none;
+      font-family: var(--font); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: opacity 0.15s, transform 0.1s; text-align: center;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); margin-top: 6px;
+      font-size: 12px; padding: 7px;
+    }
+    .btn-sm { display: inline-block; width: auto; padding: 5px 12px; font-size: 12px; font-weight: 500; }
+
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    #status-bar {
+      background: #0f0f0f; border-bottom: 1px solid var(--border);
+      padding: 8px 20px; font-size: 11px; color: var(--muted);
+      display: flex; align-items: center; gap: 16px; min-height: 36px;
+    }
+    #status-bar .stat { display: flex; align-items: center; gap: 5px; }
+    #status-bar .stat strong { color: var(--text); }
+
+    #tab-bar {
+      background: var(--card); border-bottom: 1px solid var(--border);
+      display: flex; padding: 0 20px; overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 14px 18px; border: none; border-bottom: 2px solid transparent;
+      background: none; color: var(--muted); font-family: var(--font);
+      font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent2); border-bottom-color: var(--accent); }
+
+    #tab-content { flex: 1; overflow-y: auto; padding: 20px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .metric-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .metric-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px; flex: 1; min-width: 140px;
+    }
+    .metric-card .m-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .metric-card .m-value { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--text); }
+    .metric-card .m-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .metric-card.accent-card { border-left: 3px solid var(--accent); }
+    .metric-card.warn-card   { border-left: 3px solid var(--warn); }
+    .metric-card.danger-card { border-left: 3px solid var(--danger); }
+
+    .chart-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+    }
+    .chart-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+    .chart-row { display: flex; gap: 16px; margin-bottom: 16px; }
+    .chart-row .chart-card { flex: 1; }
+    .chart-container { width: 100%; }
+
+    .controls-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .controls-row label { font-size: 12px; color: var(--muted); }
+    .toggle-group { display: flex; gap: 4px; }
+    .toggle-btn {
+      padding: 5px 12px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--muted); font-family: var(--font);
+      font-size: 12px; cursor: pointer; transition: all 0.15s;
+    }
+    .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .toggle-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+    .ai-block {
+      background: #0d1a14; border: 1px solid #1a3329;
+      border-left: 3px solid var(--accent); border-radius: var(--radius);
+      padding: 16px 18px; margin-bottom: 16px;
+    }
+    .ai-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .ai-header span { font-size: 10px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.1em; }
+    .ai-text { font-size: 13px; line-height: 1.7; color: #c8d8d0; }
+    .ai-text.loading { color: var(--muted); font-style: italic; }
+
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th { text-align: left; padding: 8px 10px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 11px; }
+    .data-table td { padding: 8px 10px; border-bottom: 1px solid #1a1a1a; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table .pos { color: #4caf84; }
+    .data-table .neg { color: var(--danger); }
+
+    .regime-badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+    .regime-badge.Bull   { background: rgba(4,114,77,0.2);   color: #05c882; }
+    .regime-badge.Bear   { background: rgba(212,151,58,0.2); color: #e6a93f; }
+    .regime-badge.Crisis { background: rgba(192,57,43,0.2);  color: #e05c5c; }
+
+    #loading-overlay {
+      position: fixed; inset: 0; background: rgba(10,10,10,0.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; backdrop-filter: blur(2px);
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner-box { text-align: center; }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-box p { font-size: 13px; color: var(--muted); }
+
+    .warning-block {
+      background: rgba(212,151,58,0.08); border: 1px solid rgba(212,151,58,0.3);
+      border-radius: var(--radius); padding: 10px 14px;
+      font-size: 12px; color: var(--warn); margin-bottom: 14px;
+    }
+
+    #footer {
+      padding: 10px 20px; border-top: 1px solid var(--border);
+      background: #080808; font-size: 10px; color: #444; line-height: 1.5;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+    /* ── Construction Scenarios Tab ── */
+    .cs-controls {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .cs-note { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+
+    .cs-progress {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px;
+    }
+    .cs-progress-bar-wrap {
+      background: #1a1a1a; border-radius: 4px; height: 6px; margin-bottom: 10px; overflow: hidden;
+    }
+    .cs-progress-bar {
+      height: 100%; background: var(--accent); border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .cs-progress-msg { font-size: 12px; color: var(--muted); }
+
+    .cs-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; margin-bottom: 12px;
+    }
+    .cs-badge-amber { background: rgba(212,151,58,0.15); border: 1px solid rgba(212,151,58,0.4); color: var(--warn); }
+
+    .cs-scenarios { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+    .cs-card {
+      flex: 1; min-width: 280px; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .cs-card-header {
+      font-size: 14px; font-weight: 700; color: var(--accent2);
+      border-bottom: 1px solid var(--border); padding-bottom: 8px;
+    }
+
+    .cs-changes { display: flex; flex-direction: column; gap: 6px; }
+    .cs-item { font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+    .cs-item-row { display: flex; align-items: center; gap: 6px; }
+    .cs-icon-add  { color: var(--accent2); font-weight: 700; font-size: 14px; }
+    .cs-icon-rem  { color: #ef4444; font-weight: 700; font-size: 14px; }
+    .cs-item-name { font-weight: 500; }
+    .cs-item-rat  { font-size: 11px; color: var(--muted); font-style: italic; padding-left: 20px; }
+    .cs-liq-badge {
+      display: inline-block; padding: 1px 6px; background: rgba(212,151,58,0.2);
+      border: 1px solid rgba(212,151,58,0.4); color: var(--warn);
+      border-radius: 3px; font-size: 10px; font-weight: 600; margin-left: 6px;
+    }
+
+    .cs-metrics-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .cs-metrics-table th {
+      text-align: left; padding: 5px 6px; color: var(--muted);
+      font-weight: 500; border-bottom: 1px solid var(--border); font-size: 10px;
+    }
+    .cs-metrics-table td { padding: 5px 6px; border-bottom: 1px solid #1a1a1a; }
+    .cs-metrics-table tr:last-child td { border-bottom: none; }
+    .cs-delta-pos { color: #4caf84; }
+    .cs-delta-neg { color: #ef4444; }
+
+    .cs-ai-block {
+      background: #0d1a14; border: 1px solid #1a3329;
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .cs-ai-toggle {
+      width: 100%; background: none; border: none; color: var(--accent2);
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 10px 14px; cursor: pointer; text-align: left; display: flex;
+      justify-content: space-between; align-items: center; font-family: var(--font);
+    }
+    .cs-ai-toggle:hover { background: rgba(4,114,77,0.07); }
+    .cs-ai-body { padding: 0 14px 12px; font-size: 12px; line-height: 1.7; color: #c8d8d0; display: none; }
+    .cs-ai-preview { padding: 6px 14px 10px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+
+    .cs-strategic {
+      background: var(--card); border: 1px solid var(--border);
+      border-left: 4px solid var(--accent); border-radius: var(--radius);
+      padding: 16px 18px; margin-bottom: 16px;
+    }
+    .cs-strategic-label {
+      font-size: 11px; font-weight: 700; color: var(--accent2);
+      text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
+    }
+    .cs-strategic-text { font-size: 13px; line-height: 1.7; color: #c8d8d0; }
+
+    .cs-disclaimer {
+      font-size: 11px; color: #555; line-height: 1.6; margin-top: 16px;
+      padding: 12px 14px; border-top: 1px solid var(--border); background: #080808;
+      border-radius: var(--radius);
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <h1>SGX Portfolio Risk Lens</h1>
+      <p>AI-Powered Quantitative Risk Analysis</p>
+    </div>
+    <div id="sidebar-body">
+      <div class="section-label">Analysis Period</div>
+      <div class="period-row">
+        <button class="period-btn" data-period="1y">1Y</button>
+        <button class="period-btn active" data-period="3y">3Y</button>
+        <button class="period-btn" data-period="5y">5Y</button>
+      </div>
+      <div class="section-label">Portfolio Holdings</div>
+      <table id="holdings-table">
+        <thead><tr><th>Ticker</th><th>Name</th><th>Wt%</th><th></th></tr></thead>
+        <tbody id="holdings-body"></tbody>
+      </table>
+      <div id="weight-total">Total: <span id="weight-sum">0</span>%</div>
+      <div class="add-row">
+        <input id="add-ticker" class="add-input" placeholder="e.g. V03.SI" maxlength="12" />
+        <button class="btn btn-primary btn-sm" onclick="addHolding()">+ Add</button>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="resetPortfolio()">Reset to Default</button>
+    </div>
+    <div id="sidebar-footer">
+      <button class="btn btn-primary" id="run-btn" onclick="runAnalysis()">Run Analysis</button>
+    </div>
+  </aside>
+
+  <div id="main">
+    <div id="status-bar">
+      <span id="status-text" style="color:var(--muted);font-style:italic;">Load a portfolio to begin.</span>
+    </div>
+    <div id="tab-bar">
+      <button class="tab-btn active" data-tab="correlations">Correlations</button>
+      <button class="tab-btn" data-tab="regimes">Regimes</button>
+      <button class="tab-btn" data-tab="factors">Factor Exposure</button>
+      <button class="tab-btn" data-tab="tail-risk">Tail Risk</button>
+      <button class="tab-btn" data-tab="hedging">Hedging Offsets</button>
+      <button class="tab-btn" data-tab="benchmark">Benchmark</button>
+      <button class="tab-btn" data-tab="construction">Construction Scenarios</button>
+      <button class="tab-btn" data-tab="data-sources">Data Sources</button>
+    </div>
+
+    <div id="tab-content">
+
+      <!-- Tab 1: Correlations -->
+      <div id="tab-correlations" class="tab-panel active">
+        <div class="metric-row" id="corr-metrics"></div>
+        <div id="corr-warnings"></div>
+        <div class="controls-row">
+          <label>Rolling Window:</label>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-window="30">30d</button>
+            <button class="toggle-btn active" data-window="90">90d</button>
+            <button class="toggle-btn" data-window="180">180d</button>
+          </div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-card" style="flex:1.5;">
+            <h3>Pairwise Correlation Matrix</h3>
+            <div id="corr-heatmap" class="chart-container"></div>
+          </div>
+          <div class="chart-card" style="flex:1;min-width:260px;">
+            <h3>Correlation Pairs Summary</h3>
+            <div id="corr-pairs-table"></div>
+          </div>
+        </div>
+        <div class="ai-block">
+          <div class="ai-header">
+            <span>AI Analysis</span>
+            <button class="btn btn-outline btn-sm" onclick="regenAI('correlations')">Regenerate</button>
+          </div>
+          <div class="ai-text" id="ai-correlations">Analysis will appear here after running the portfolio.</div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Regimes -->
+      <div id="tab-regimes" class="tab-panel">
+        <div class="metric-row" id="regime-metrics"></div>
+        <div class="chart-card">
+          <h3>Market Regime Timeline &amp; Portfolio Cumulative Return</h3>
+          <div id="regime-chart" class="chart-container"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Per-Regime Statistics</h3>
+          <div id="regime-stats-table"></div>
+        </div>
+        <div class="ai-block">
+          <div class="ai-header">
+            <span>AI Analysis</span>
+            <button class="btn btn-outline btn-sm" onclick="regenAI('regimes')">Regenerate</button>
+          </div>
+          <div class="ai-text" id="ai-regimes">Analysis will appear here after running the portfolio.</div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Factor Exposure -->
+      <div id="tab-factors" class="tab-panel">
+        <div class="metric-row" id="factor-metrics"></div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <h3>Current Factor Exposures (with 95% CI)</h3>
+            <div id="factor-bar-chart" class="chart-container"></div>
+            <div id="factor-sora-source" style="color:var(--muted);font-size:11px;margin:4px 0 4px;"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Rolling Factor Exposures (252-day window)</h3>
+            <div id="factor-line-chart" class="chart-container"></div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Factor Descriptions</h3>
+          <div id="factor-descriptions"></div>
+        </div>
+        <div class="ai-block">
+          <div class="ai-header">
+            <span>AI Analysis</span>
+            <button class="btn btn-outline btn-sm" onclick="regenAI('factors')">Regenerate</button>
+          </div>
+          <div class="ai-text" id="ai-factors">Analysis will appear here after running the portfolio.</div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Tail Risk -->
+      <div id="tab-tail-risk" class="tab-panel">
+        <div class="metric-row" id="tail-metrics"></div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <h3>Return Distribution</h3>
+            <div id="tail-histogram" class="chart-container"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Rolling 12-Month Maximum Drawdown</h3>
+            <div id="tail-drawdown-chart" class="chart-container"></div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Worst 10 Drawdown Days — Contribution by Holding</h3>
+          <div id="tail-worst-days"></div>
+        </div>
+        <div class="ai-block">
+          <div class="ai-header">
+            <span>AI Analysis</span>
+            <button class="btn btn-outline btn-sm" onclick="regenAI('tail_risk')">Regenerate</button>
+          </div>
+          <div class="ai-text" id="ai-tail_risk">Analysis will appear here after running the portfolio.</div>
+        </div>
+      </div>
+
+      <!-- Tab 5: Hedging Offsets -->
+      <div id="tab-hedging" class="tab-panel">
+        <div class="metric-row" id="hedge-metrics"></div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <h3>Stress-Period Correlations by Instrument</h3>
+            <div id="hedge-corr-chart" class="chart-container"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Volatility Reduction at 10% / 20% Allocation</h3>
+            <div id="hedge-vol-chart" class="chart-container"></div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Hedge Effectiveness Table — Historically Observed Offsets</h3>
+          <div id="hedge-table"></div>
+        </div>
+        <div class="ai-block">
+          <div class="ai-header">
+            <span>AI Analysis</span>
+            <button class="btn btn-outline btn-sm" onclick="regenAI('hedging')">Regenerate</button>
+          </div>
+          <div class="ai-text" id="ai-hedging">Analysis will appear here after running the portfolio.</div>
+        </div>
+      </div>
+
+      <!-- Tab 6: Benchmark (STI ETF ES3.SI) -->
+      <div id="tab-benchmark" class="tab-panel">
+        <div class="metric-row" id="bench-metrics"></div>
+        <div class="chart-card">
+          <h3>Cumulative Return — Portfolio vs STI ETF (ES3.SI)</h3>
+          <div id="bench-cum-chart" class="chart-container"></div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <h3>Rolling 12-Month Return — Portfolio vs Benchmark</h3>
+            <div id="bench-roll-chart" class="chart-container"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Calendar Year Returns</h3>
+            <div id="bench-yearly-chart" class="chart-container"></div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Statistics — Portfolio vs STI ETF (ES3.SI)</h3>
+          <div id="bench-stats-table"></div>
+        </div>
+        <div class="ai-block">
+          <div class="ai-header">
+            <span>AI Analysis</span>
+            <button class="btn btn-outline btn-sm" onclick="regenAI('benchmark')">Regenerate</button>
+          </div>
+          <div class="ai-text" id="ai-benchmark">Analysis will appear here after running the portfolio.</div>
+        </div>
+      </div>
+
+      <!-- Tab 7: Construction Scenarios -->
+      <div id="tab-construction" class="tab-panel">
+
+        <div class="cs-controls">
+          <label style="font-size:12px;color:var(--muted);">Objective:</label>
+          <div class="toggle-group" id="cs-objective-group">
+            <button class="toggle-btn active" data-obj="sharpe">Maximum Sharpe</button>
+            <button class="toggle-btn" data-obj="min_vol">Minimum Volatility</button>
+            <button class="toggle-btn" data-obj="cvar">CVaR / Tail Risk</button>
+          </div>
+          <button class="btn btn-primary btn-sm" id="cs-run-btn" onclick="runConstruction()">Run Analysis</button>
+        </div>
+        <div class="cs-note">Analyses 50 SGX names across 3Y of price data using two-pass AI + quant engine. Runtime: ~10–15 seconds.</div>
+
+        <div id="cs-progress" class="cs-progress" style="display:none;">
+          <div class="cs-progress-bar-wrap"><div class="cs-progress-bar" id="cs-bar" style="width:0%"></div></div>
+          <div class="cs-progress-msg" id="cs-msg">Starting...</div>
+        </div>
+
+        <div id="cs-fallback-badge" style="display:none;">
+          <span class="cs-badge cs-badge-amber">Ran without AI pre-screening — full universe mode</span>
+        </div>
+
+        <div id="cs-scenarios" class="cs-scenarios" style="display:none;"></div>
+
+        <div id="cs-weight-chart-wrap" style="display:none;">
+          <div class="chart-card">
+            <h3>Weight Comparison: Current vs Scenarios</h3>
+            <div id="cs-weight-chart" class="chart-container"></div>
+          </div>
+        </div>
+
+        <div id="cs-strategic-wrap" style="display:none;">
+          <div class="cs-strategic">
+            <div class="cs-strategic-label">Strategic Signal</div>
+            <div class="cs-strategic-text" id="cs-strategic-text"></div>
+          </div>
+        </div>
+
+        <div class="cs-disclaimer">
+          Portfolio construction scenarios are generated using 3-year historical price data and
+          quantitative optimisation. They represent mathematical outcomes under historical conditions
+          only. Liquidity, governance, transaction costs, and forward-looking factors are not fully
+          captured. This is not investment advice. Consult a licensed investment advisor before making
+          portfolio changes.
+        </div>
+
+      </div>
+
+      <!-- Tab 8: Data Sources -->
+      <div id="tab-data-sources" class="tab-panel">
+
+        <div class="chart-card">
+          <h3>Market &amp; Price Data</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+            All price data is fetched at runtime from Yahoo Finance via the open-source
+            <code style="background:#1a1a1a;padding:1px 5px;border-radius:3px;">yfinance</code> library.
+            Data is daily adjusted closing prices. Corporate action adjustments (splits, dividends) are
+            applied by Yahoo Finance automatically but may be incomplete for less liquid SGX names.
+          </p>
+          <table class="data-table">
+            <thead><tr><th>Ticker</th><th>Name</th><th>Used In</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td class="ticker-cell">.SI tickers</td><td>Portfolio holdings (user-defined)</td><td>All modules</td><td>SGX-listed equities; prices in SGD</td></tr>
+              <tr><td class="ticker-cell">ES3.SI</td><td>SPDR STI ETF (Straits Times Index)</td><td>Regimes, Factors, Benchmark, Hedging</td><td>Used as the SGX market benchmark throughout</td></tr>
+              <tr><td class="ticker-cell">SGDUSD=X</td><td>USD/SGD spot rate</td><td>Factors, Hedging (Gold)</td><td>Yahoo Finance FX rate; used for FX sensitivity factor and Gold SGD conversion</td></tr>
+              <tr><td class="ticker-cell">GC=F</td><td>Gold Futures (COMEX front-month)</td><td>Hedging Offsets</td><td>USD-denominated; converted to SGD terms using SGDUSD=X for hedging analysis</td></tr>
+              <tr><td class="ticker-cell">AAXJ</td><td>iShares MSCI All Country Asia ex Japan ETF</td><td>Hedging Offsets</td><td>Used as a regional diversification / hedging candidate</td></tr>
+              <tr><td class="ticker-cell">AXJR</td><td>iShares Asia ex Japan REIT ETF</td><td>Hedging Offsets</td><td>Frequently unavailable via Yahoo Finance; omitted from hedging results when data fails</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="chart-card">
+          <h3>SGD Interest Rate Proxy (SORA)</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+            The Factor Exposure module uses a SGD interest rate proxy as a third factor alongside
+            market beta and FX sensitivity. The proxy is sourced via a waterfall of fallbacks tried
+            in order at runtime. The first source that returns valid data is used.
+          </p>
+          <table class="data-table">
+            <thead><tr><th style="width:30%">Source (priority order)</th><th>Ticker</th><th>Type</th><th>Availability</th></tr></thead>
+            <tbody>
+              <tr><td>1 — SGS 2Y Bond Yield</td><td class="ticker-cell">2YY=R</td><td>Yield level (Reuters format)</td><td style="color:var(--danger)">Frequently unavailable on Yahoo Finance (404)</td></tr>
+              <tr><td>2 — SGS 10Y Bond Yield</td><td class="ticker-cell">SG10YT=RR</td><td>Yield level (Reuters format)</td><td style="color:var(--danger)">Frequently unavailable on Yahoo Finance (404)</td></tr>
+              <tr><td>3 — iShares Asia IG Bond ETF</td><td class="ticker-cell">A35.SI</td><td>SGX-listed bond ETF price</td><td style="color:var(--accent2)">Reliably available; current active fallback</td></tr>
+              <tr><td>4 — US 3M T-Bill (last resort)</td><td class="ticker-cell">^IRX</td><td>Yield level</td><td style="color:var(--warn)">Backup only; logs a console warning when used</td></tr>
+            </tbody>
+          </table>
+          <p style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.7;">
+            <strong style="color:var(--text);">Sign convention:</strong> Each series is differentiated
+            (pct_change) and sign-adjusted so that a positive regressor value means rates are rising.
+            A35.SI moves inversely to rates (bond price rises as yields fall), so its return is
+            multiplied by −1 before use. A positive SGD Rate Sensitivity coefficient therefore means
+            the portfolio benefits when rates rise; a negative coefficient means it is hurt.
+          </p>
+          <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7;">
+            <strong style="color:var(--text);">Limitation:</strong> A35.SI is an investment-grade Asian
+            bond ETF, not a pure SGD rate instrument. Its price reflects credit spreads, duration of
+            its holdings, and USD/SGD translation, not just the SORA overnight rate. It is a reasonable
+            directional proxy for rate sensitivity but should not be read as a precise SORA beta.
+            For production use, connect directly to the MAS SORA daily fixings API.
+          </p>
+        </div>
+
+        <div class="chart-card">
+          <h3>AI Interpretations</h3>
+          <p style="font-size:12px;color:var(--muted);line-height:1.7;">
+            Each module's AI narrative is generated by the
+            <strong style="color:var(--text);">Anthropic Claude API</strong> (claude-sonnet-4-6).
+            The model receives the quantitative output of that module and is prompted to interpret
+            the numbers in plain English for a Singapore-focused equity portfolio context.
+            AI text is generated on demand and is not cached between sessions.
+          </p>
+          <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7;">
+            <strong style="color:var(--text);">Limitation:</strong> Claude has a knowledge cutoff and
+            does not have access to live news, earnings releases, or MAS regulatory announcements.
+            Interpretations reflect historical statistical patterns only. They should not be treated
+            as forward-looking analysis or investment advice.
+          </p>
+        </div>
+
+        <div class="chart-card">
+          <h3>Construction Scenarios</h3>
+          <p style="font-size:12px;color:var(--muted);line-height:1.7;">
+            The Construction Scenarios module runs a two-pass engine against a universe of
+            <strong style="color:var(--text);">50 SGX names</strong> (STI 30 + approximately 20 next
+            by market cap). Price data for the full universe is fetched separately using
+            <strong style="color:var(--text);">3 years</strong> of daily closes at startup.
+            Optimisation objectives are Maximum Sharpe, Minimum Volatility, and CVaR minimisation,
+            all solved with pure NumPy (no scipy/statsmodels).
+          </p>
+          <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7;">
+            <strong style="color:var(--text);">Limitation:</strong> Optimised weights are derived
+            entirely from historical returns and covariances. Transaction costs, bid-ask spreads,
+            SGX lot sizes, and forward-looking views are not incorporated. The engine does not account
+            for holding-period restrictions, withholding tax on REIT distributions, or SGX-specific
+            corporate governance risks. Do not use output weights directly for live trading.
+          </p>
+        </div>
+
+        <div class="chart-card">
+          <h3>Known Data Limitations</h3>
+          <ul style="font-size:12px;color:var(--muted);line-height:2;padding-left:18px;">
+            <li><strong style="color:var(--text);">Yahoo Finance is not a licensed data provider.</strong> Data may be delayed (15–20 min intraday), have gaps on Singapore public holidays, or be silently stale. For institutional production use, replace yfinance with SGX DataConnect, Refinitiv, or Bloomberg.</li>
+            <li><strong style="color:var(--text);">SGS bond yield tickers (2YY=R, SG10YT=RR) are unreliable.</strong> Yahoo Finance often returns 404 for Reuters-format SGS yield tickers; the app falls back to A35.SI automatically but logs which source was used.</li>
+            <li><strong style="color:var(--text);">AXJR is frequently delisted / unavailable</strong> on Yahoo Finance. It is silently skipped in Hedging Offsets when data cannot be fetched.</li>
+            <li><strong style="color:var(--text);">Adjusted close prices</strong> are adjusted for splits and dividends by Yahoo Finance, but accuracy varies — especially for SGX counters with complex dividend histories or rights issues.</li>
+            <li><strong style="color:var(--text);">Gold (GC=F) is COMEX front-month USD futures.</strong> Roll costs and basis between spot and front-month are not modelled. The SGD conversion uses a daily FX rate, not the specific settlement convention of each contract.</li>
+            <li><strong style="color:var(--text);">All analyses use calendar-day aligned daily closes.</strong> SGX and US market holiday calendars differ; on US-only holidays, SGDUSD=X and GC=F may have gaps that are forward-filled (up to 5 days).</li>
+            <li><strong style="color:var(--text);">Rolling OLS window (252 days)</strong> means the first ~12 months of data produce no rolling factor estimates. For short analysis periods (1Y), the rolling chart will have very few or no data points.</li>
+          </ul>
+        </div>
+
+      </div><!-- end tab-data-sources -->
+
+    </div><!-- end tab-content -->
+
+    <div id="footer">
+      This tool uses publicly available price data for analytical purposes only. All outputs are historical observations, not investment advice. &nbsp;|&nbsp;
+      Price data sourced from Yahoo Finance via yfinance. Corporate action adjustments may be incomplete. Not suitable for institutional production use without a licensed data provider.
+    </div>
+  </div>
+
+</div>
+
+<div id="loading-overlay">
+  <div class="spinner-box">
+    <div class="spinner"></div>
+    <p id="loading-text">Initialising...</p>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+
+const DEFAULT_HOLDINGS = [
+  {ticker:'D05.SI',  name:'DBS Group',                  weight:15, sector:'Banking'},
+  {ticker:'O39.SI',  name:'OCBC',                       weight:10, sector:'Banking'},
+  {ticker:'U11.SI',  name:'UOB',                        weight:10, sector:'Banking'},
+  {ticker:'C31.SI',  name:'CapitaLand Integrated',      weight:10, sector:'REIT'},
+  {ticker:'A17U.SI', name:'Ascendas REIT',              weight: 8, sector:'REIT'},
+  {ticker:'ME8U.SI', name:'Mapletree Industrial Trust', weight: 7, sector:'REIT'},
+  {ticker:'BN4.SI',  name:'Keppel Corporation',         weight: 8, sector:'Industrials'},
+  {ticker:'S68.SI',  name:'Singapore Exchange',         weight: 7, sector:'Financials'},
+  {ticker:'Z74.SI',  name:'Singtel',                    weight: 8, sector:'Telco'},
+  {ticker:'G13.SI',  name:'Genting Singapore',          weight: 7, sector:'Consumer'},
+  {ticker:'C09.SI',  name:'City Developments',          weight: 5, sector:'Property'},
+  {ticker:'BS6.SI',  name:'YZJ Shipbuilding',           weight: 5, sector:'Industrials'},
+];
+
+const state = {
+  holdings:    JSON.parse(JSON.stringify(DEFAULT_HOLDINGS)),
+  period:      '3y',
+  activeTab:   'correlations',
+  corrWindow:  90,
+  loadedData:  null,
+  moduleData:  {},
+  aiData:      {},
+};
+
+// ═══════════════════════════════════════════════════════
+// AXIS UTILITIES  ← all fixes live here
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Given an array of numeric values (already in display units),
+ * return a Plotly yaxis config with:
+ *   - a clean dtick so ~5-8 gridlines appear
+ *   - range padded 10% beyond min/max
+ *   - tickformat showing exactly 2 significant figures (no runaway decimals)
+ *   - optional ticksuffix (e.g. '%')
+ */
+function makeYAxis(values, opts = {}) {
+  const flat = (Array.isArray(values[0]) ? values.flat() : values)
+    .filter(v => v != null && isFinite(v));
+  if (!flat.length) return { tickformat: '.2f', ...(opts.suffix ? {ticksuffix: opts.suffix} : {}) };
+
+  const yMin = Math.min(...flat);
+  const yMax = Math.max(...flat);
+  const span = yMax - yMin;
+
+  // Target ~6 gridlines; round dtick up to a "nice" value
+  const rawStep = span / 6;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(rawStep) || 1)));
+  const normalized = rawStep / magnitude;
+  let niceFactor;
+  if      (normalized <= 1)   niceFactor = 1;
+  else if (normalized <= 2)   niceFactor = 2;
+  else if (normalized <= 2.5) niceFactor = 2.5;
+  else if (normalized <= 5)   niceFactor = 5;
+  else                        niceFactor = 10;
+  const dtick = niceFactor * magnitude;
+
+  // Snap range to tick grid
+  const rangeMin = Math.floor(yMin / dtick) * dtick;
+  const rangeMax = Math.ceil(yMax  / dtick) * dtick;
+  // Add one extra tick of padding
+  const rangePadded = [rangeMin - dtick * 0.2, rangeMax + dtick * 0.2];
+
+  // Choose a sensible tickformat
+  // If dtick >= 10  → no decimals
+  // If dtick >= 1   → 1 decimal
+  // If dtick >= 0.1 → 2 decimals
+  // else            → 2 sig figs via 'g' format
+  let tickformat;
+  if      (dtick >= 10)  tickformat = '.0f';
+  else if (dtick >= 1)   tickformat = '.1f';
+  else if (dtick >= 0.1) tickformat = '.2f';
+  else                   tickformat = '.2g';
+
+  return {
+    tickmode:   'linear',
+    tick0:      rangeMin,
+    dtick,
+    range:      rangePadded,
+    autorange:  false,
+    tickformat,
+    ...(opts.suffix ? {ticksuffix: opts.suffix} : {}),
+    ...(opts.title  ? {title: {text: opts.title, font: {size: 11}}} : {}),
+    gridcolor:   '#1e1e1e',
+    zerolinecolor:'#2a2a2a',
+    tickfont:   {size: 10},
+    linecolor:  '#2a2a2a',
+  };
+}
+
+/** Cumulative-return axis — values like 0.85, 1.42 → show as 0.85×, 1.42× */
+function makeCumReturnAxis(values) {
+  const ax = makeYAxis(values, {title: 'Cumulative Return (×)'});
+  ax.tickformat = '.2f';  // 2 decimal places, no suffix
+  return ax;
+}
+
+/** Percentage axis — values already multiplied by 100 (e.g. -7.3, 14.2) */
+function makePctAxis(values, title) {
+  return makeYAxis(values, {suffix: '%', title});
+}
+
+/** Small-coefficient axis — values like 0.003, 0.87, -0.12 */
+function makeCoefAxis(values, title) {
+  const ax = makeYAxis(values, {title});
+  // Never show more than 2 decimal places for coefficients
+  if (ax.dtick < 0.01) {
+    ax.dtick      = 0.01;
+    ax.tickformat = '.2f';
+  }
+  return ax;
+}
+
+// ═══════════════════════════════════════════════════════
+// PLOTLY THEME
+// ═══════════════════════════════════════════════════════
+
+const PLOTLY_LAYOUT_BASE = {
+  paper_bgcolor: 'transparent',
+  plot_bgcolor:  'transparent',
+  font:  {family: 'Inter, system-ui, sans-serif', color: '#e8e8e8', size: 11},
+  margin:{l:50, r:20, t:20, b:50},
+  xaxis: {gridcolor:'#1e1e1e', zerolinecolor:'#2a2a2a', tickfont:{size:10}, linecolor:'#2a2a2a'},
+  yaxis: {gridcolor:'#1e1e1e', zerolinecolor:'#2a2a2a', tickfont:{size:10}, linecolor:'#2a2a2a'},
+  legend:{bgcolor:'transparent', font:{size:11}},
+  colorway:['#04724D','#d4973a','#5b8de8','#c0392b','#9b59b6','#1abc9c','#e67e22'],
+};
+const PLOTLY_CONFIG = {displayModeBar: false, responsive: true};
+
+function baseLayout(extra = {}) {
+  // Deep-merge xaxis/yaxis so callers can extend without losing base styles
+  const merged = {...PLOTLY_LAYOUT_BASE, ...extra};
+  merged.xaxis  = {...PLOTLY_LAYOUT_BASE.xaxis,  ...(extra.xaxis  || {})};
+  merged.yaxis  = {...PLOTLY_LAYOUT_BASE.yaxis,  ...(extra.yaxis  || {})};
+  if (extra.yaxis2) merged.yaxis2 = extra.yaxis2;
+  return merged;
+}
+
+// ═══════════════════════════════════════════════════════
+// SIDEBAR — Portfolio Management
+// ═══════════════════════════════════════════════════════
+
+function renderPortfolioTable() {
+  const tbody = document.getElementById('holdings-body');
+  tbody.innerHTML = '';
+  state.holdings.forEach((h, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="ticker-cell">${h.ticker}</td>
+      <td style="font-size:11px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${h.name}">${h.name}</td>
+      <td><input class="weight-input" type="number" min="0" max="100" step="0.5"
+           value="${h.weight}" onchange="updateWeight(${i}, this.value)" /></td>
+      <td><button class="remove-btn" onclick="removeHolding(${i})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  updateWeightTotal();
+}
+
+function updateWeight(idx, val) {
+  state.holdings[idx].weight = parseFloat(val) || 0;
+  updateWeightTotal();
+}
+
+function updateWeightTotal() {
+  const total = state.holdings.reduce((s, h) => s + h.weight, 0);
+  const el = document.getElementById('weight-sum');
+  el.textContent = total.toFixed(1);
+  el.style.color = Math.abs(total - 100) < 0.5 ? 'var(--accent2)' : 'var(--danger)';
+}
+
+function removeHolding(idx) {
+  state.holdings.splice(idx, 1);
+  renderPortfolioTable();
+}
+
+function addHolding() {
+  const input  = document.getElementById('add-ticker');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+  if (state.holdings.find(h => h.ticker === ticker)) { alert(`${ticker} is already in the portfolio.`); return; }
+  state.holdings.push({ticker, name: ticker, weight: 5, sector: 'Other'});
+  input.value = '';
+  renderPortfolioTable();
+}
+
+function resetPortfolio() {
+  state.holdings    = JSON.parse(JSON.stringify(DEFAULT_HOLDINGS));
+  state.moduleData  = {};
+  state.aiData      = {};
+  renderPortfolioTable();
+}
+
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.period = btn.dataset.period;
+  });
+});
+
+document.getElementById('add-ticker').addEventListener('keydown', e => { if (e.key === 'Enter') addHolding(); });
+
+// ═══════════════════════════════════════════════════════
+// TAB NAVIGATION
+// ═══════════════════════════════════════════════════════
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!state.loadedData && btn.dataset.tab !== 'data-sources') return;
+    switchTab(btn.dataset.tab);
+  });
+});
+
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b  => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+  if (!state.moduleData[tab]) fetchModuleData(tab);
+}
+
+document.querySelectorAll('.toggle-btn[data-window]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.toggle-btn[data-window]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.corrWindow = parseInt(btn.dataset.window);
+    state.moduleData['correlations'] = null;
+    if (state.activeTab === 'correlations') fetchModuleData('correlations');
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// LOADING UI
+// ═══════════════════════════════════════════════════════
+
+function showLoading(text = 'Loading...') {
+  document.getElementById('loading-text').textContent = text;
+  document.getElementById('loading-overlay').classList.remove('hidden');
+}
+function hideLoading() { document.getElementById('loading-overlay').classList.add('hidden'); }
+function setStatus(html) { document.getElementById('status-text').innerHTML = html; }
+
+// ═══════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════
+
+function buildBody(extra = {}) {
+  const total = state.holdings.reduce((s, h) => s + h.weight, 0);
+  return JSON.stringify({
+    holdings:  state.holdings.map(h => ({...h, weight: h.weight / (total || 1) * 100})),
+    period:    state.period,
+    benchmark: 'ES3.SI',
+    ...extra,
+  });
+}
+
+async function apiFetch(endpoint, body) {
+  const res = await fetch(endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, body});
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({detail: res.statusText}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ═══════════════════════════════════════════════════════
+// RUN ANALYSIS
+// ═══════════════════════════════════════════════════════
+
+async function runAnalysis() {
+  const total = state.holdings.reduce((s, h) => s + h.weight, 0);
+  if (Math.abs(total - 100) > 1) { alert(`Weights must sum to 100%. Current total: ${total.toFixed(1)}%`); return; }
+
+  state.moduleData = {};
+  state.aiData     = {};
+
+  showLoading(`Fetching ${state.period.toUpperCase()} price data for ${state.holdings.length} holdings…`);
+  document.getElementById('run-btn').disabled = true;
+
+  try {
+    const data = await apiFetch('/api/load', buildBody());
+    state.loadedData = data;
+
+    const ps     = data.portfolio_stats;
+    const failed = data.failed_tickers.length
+      ? ` | <span style="color:var(--warn)">⚠ Failed: ${data.failed_tickers.join(', ')}</span>`
+      : '';
+    setStatus(
+      `<span class="stat">📅 <strong>${data.coverage_start}</strong> → <strong>${data.coverage_end}</strong> (${data.trading_days} days)</span>` +
+      `<span class="stat">Ret: <strong class="${ps.annualized_return>=0?'pos':'neg'}">${(ps.annualized_return*100).toFixed(1)}%</strong></span>` +
+      `<span class="stat">Vol: <strong>${(ps.annualized_vol*100).toFixed(1)}%</strong></span>` +
+      `<span class="stat">Sharpe: <strong>${ps.sharpe.toFixed(2)}</strong></span>` + failed
+    );
+
+    // Run all modules in parallel — tabs will be pre-rendered before the user clicks them
+    const ALL_MODULES = ['correlations', 'regimes', 'factors', 'tail-risk', 'hedging', 'benchmark'];
+    let done = 0;
+    const loadingEl = document.getElementById('loading-text');
+    loadingEl.textContent = `Running all analyses (0 / ${ALL_MODULES.length})…`;
+
+    await Promise.allSettled(
+      ALL_MODULES.map(tab =>
+        fetchModuleData(tab, true /* silent */).then(() => {
+          done++;
+          loadingEl.textContent = `Running all analyses (${done} / ${ALL_MODULES.length})…`;
+        })
+      )
+    );
+  } catch (err) {
+    alert('Error loading data: ' + err.message);
+    setStatus(`<span style="color:var(--danger)">Error: ${err.message}</span>`);
+  } finally {
+    hideLoading();
+    document.getElementById('run-btn').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE DATA FETCHING
+// ═══════════════════════════════════════════════════════
+
+const MODULE_ENDPOINTS = {
+  correlations: '/api/analysis/correlations',
+  regimes:      '/api/analysis/regimes',
+  factors:      '/api/analysis/factors',
+  'tail-risk':  '/api/analysis/tail-risk',
+  hedging:      '/api/analysis/hedging',
+  benchmark:    '/api/analysis/benchmark',
+};
+
+async function fetchModuleData(tab, silent = false) {
+  const endpoint = MODULE_ENDPOINTS[tab];
+  if (!endpoint || !state.loadedData) return;
+
+  if (!silent) {
+    const msgs = {
+      correlations: 'Computing rolling correlations…',
+      regimes:      'Detecting market regimes…',
+      factors:      'Running factor regressions…',
+      'tail-risk':  'Computing VaR and drawdown metrics…',
+      hedging:      'Analysing historical hedge instruments…',
+    };
+    showLoading(msgs[tab] || 'Computing…');
+  }
+
+  try {
+    const extra = tab === 'correlations' ? {window: state.corrWindow} : {};
+    const data  = await apiFetch(endpoint, buildBody(extra));
+    state.moduleData[tab] = data;
+    renderModule(tab, data);
+    fetchAI(tab, data);
+  } catch (err) {
+    console.error(`Module ${tab} error:`, err);
+    const panel = document.getElementById(`tab-${tab}`);
+    if (panel) {
+      panel.querySelectorAll('.module-error-block').forEach(el => el.remove());
+      const errEl = document.createElement('div');
+      errEl.className = 'warning-block module-error-block';
+      errEl.textContent = `Analysis error: ${err.message}`;
+      panel.prepend(errEl);
+    }
+  } finally {
+    if (!silent) hideLoading();
+  }
+}
+
+async function fetchAI(tab, data) {
+  const moduleMap = {
+    'correlations': 'correlations',
+    'regimes':      'regimes',
+    'factors':      'factors',
+    'tail-risk':    'tail_risk',
+    'hedging':      'hedging',
+    'benchmark':    'benchmark',
+  };
+  const module = moduleMap[tab];
+  if (!module) return;
+
+  const aiEl = document.getElementById(`ai-${module}`);
+  if (aiEl) { aiEl.textContent = 'Generating AI analysis…'; aiEl.className = 'ai-text loading'; }
+
+  try {
+    const res    = await fetch('/api/ai/interpret', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({module, data}),
+    });
+    const result = await res.json();
+    state.aiData[tab] = result.interpretation;
+    if (aiEl) { aiEl.textContent = result.interpretation; aiEl.className = 'ai-text'; }
+  } catch (err) {
+    if (aiEl) { aiEl.textContent = 'AI analysis unavailable: ' + err.message; aiEl.className = 'ai-text'; }
+  }
+}
+
+async function regenAI(module) {
+  const tabMap = { correlations:'correlations', regimes:'regimes', factors:'factors', tail_risk:'tail-risk', hedging:'hedging', benchmark:'benchmark' };
+  const tab = tabMap[module];
+  if (tab && state.moduleData[tab]) await fetchAI(tab, state.moduleData[tab]);
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER ROUTER
+// ═══════════════════════════════════════════════════════
+
+function renderModule(tab, data) {
+  const renderers = {
+    correlations: renderCorrelations,
+    regimes:      renderRegimes,
+    factors:      renderFactors,
+    'tail-risk':  renderTailRisk,
+    hedging:      renderHedging,
+    benchmark:    renderBenchmark,
+  };
+  if (renderers[tab]) renderers[tab](data);
+}
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+
+function metricCard(label, value, sub = '', cls = '') {
+  return `<div class="metric-card ${cls}">
+    <div class="m-label">${label}</div>
+    <div class="m-value">${value}</div>
+    ${sub ? `<div class="m-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+function pct(v, digits = 1) { return v != null ? (v * 100).toFixed(digits) + '%' : '—'; }
+function num(v, digits = 2) { return v != null ? v.toFixed(digits) : '—'; }
+
+// ═══════════════════════════════════════════════════════
+// MODULE 1: CORRELATIONS
+// ═══════════════════════════════════════════════════════
+
+function renderCorrelations(data) {
+  const s = data.stats;
+  document.getElementById('corr-metrics').innerHTML =
+    metricCard('Avg Correlation', num(s.avg_correlation), `${state.corrWindow}-day window`, 'accent-card') +
+    metricCard('Max Correlation', num(s.max_correlation), data.top_correlated[0]?.pair.join(' / ') || '') +
+    metricCard('Concentration Risk', s.n_concentration_risk, 'pairs with ρ > 0.75', s.n_concentration_risk > 0 ? 'warn-card' : '') +
+    metricCard('Holdings Analysed', data.tickers.length, `${s.n_pairs} unique pairs`);
+
+  const tickers = data.tickers;
+  const zvals   = tickers.map(row => tickers.map(col => data.correlation_matrix[col]?.[row] ?? null));
+  const textvals= zvals.map(row => row.map(v => v != null ? v.toFixed(2) : ''));
+
+  Plotly.newPlot('corr-heatmap', [{
+    type: 'heatmap',
+    x: tickers, y: tickers, z: zvals,
+    text: textvals, texttemplate: '%{text}', textfont: {size: 9},
+    colorscale: [[0,'#c0392b'],[0.5,'#ffffff'],[1,'#04724D']],
+    zmin: -1, zmax: 1, showscale: true,
+    colorbar: {thickness:12, len:0.8, tickfont:{size:9,color:'#888'}, tickvals:[-1,-0.5,0,0.5,1]},
+    hovertemplate: '%{y} / %{x}: <b>%{z:.3f}</b><extra></extra>',
+  }], baseLayout({
+    height: 420,
+    margin: {l:80, r:20, t:10, b:80},
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, tickangle:-45},
+  }), PLOTLY_CONFIG);
+
+  const topH = data.top_correlated.map(p =>
+    `<tr><td>${p.pair[0]}</td><td>${p.pair[1]}</td><td class="pos">${p.correlation.toFixed(3)}</td></tr>`).join('');
+  const botH = data.least_correlated.map(p =>
+    `<tr><td>${p.pair[0]}</td><td>${p.pair[1]}</td><td class="neg">${p.correlation.toFixed(3)}</td></tr>`).join('');
+  const conc = data.concentration_risk_pairs.length
+    ? data.concentration_risk_pairs.map(p =>
+        `<tr><td colspan="2" style="color:var(--warn)">${p.pair[0]} / ${p.pair[1]}</td>
+         <td style="color:var(--warn)">${p.correlation.toFixed(3)}</td></tr>`).join('')
+    : '<tr><td colspan="3" style="color:var(--muted)">None (all pairs ρ ≤ 0.75)</td></tr>';
+
+  document.getElementById('corr-pairs-table').innerHTML = `
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">Top 5 Most Correlated</p>
+    <table class="data-table" style="margin-bottom:14px;">
+      <thead><tr><th>Ticker A</th><th>Ticker B</th><th>ρ</th></tr></thead>
+      <tbody>${topH}</tbody>
+    </table>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">Top 5 Least Correlated</p>
+    <table class="data-table" style="margin-bottom:14px;">
+      <thead><tr><th>Ticker A</th><th>Ticker B</th><th>ρ</th></tr></thead>
+      <tbody>${botH}</tbody>
+    </table>
+    <p style="font-size:11px;color:var(--warn);margin-bottom:8px;">⚠ Concentration Risk (ρ > 0.75)</p>
+    <table class="data-table">
+      <thead><tr><th>Ticker A</th><th>Ticker B</th><th>ρ</th></tr></thead>
+      <tbody>${conc}</tbody>
+    </table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE 2: REGIMES
+// ═══════════════════════════════════════════════════════
+
+function renderRegimes(data) {
+  const dist = data.regime_distribution;
+  const curr = data.current_regime;
+  document.getElementById('regime-metrics').innerHTML =
+    metricCard('Current Regime', `<span class="regime-badge ${curr}">${curr}</span>`, 'as of latest data') +
+    metricCard('Bull Market', pct(dist.Bull || 0), 'of analysis period', 'accent-card') +
+    metricCard('Bear Market', pct(dist.Bear || 0), 'of analysis period', 'warn-card') +
+    metricCard('Crisis',      pct(dist.Crisis|| 0), 'of analysis period', 'danger-card');
+
+  const cumR = data.portfolio_cumulative_returns;
+
+  // ── FIX 1: regime bands use yaxis2 (hidden, 0-1), return line uses yaxis (data-driven) ──
+  const REGIME_COLORS = {
+    Bull:   'rgba(4,114,77,0.18)',
+    Bear:   'rgba(212,151,58,0.25)',
+    Crisis: 'rgba(192,57,43,0.30)',
+  };
+
+  // Regime bands as filled scatter traces on yaxis2 (keeps yaxis clean)
+  const bandTraces = (data.regime_periods || []).map(p => ({
+    type: 'scatter', mode: 'none',
+    x: [p.start, p.start, p.end, p.end, p.start],
+    y: [0, 1, 1, 0, 0],
+    fill: 'toself',
+    fillcolor: REGIME_COLORS[p.regime] || 'rgba(100,100,100,0.1)',
+    line: {width: 0},
+    yaxis: 'y2',
+    showlegend: false,
+    hoverinfo: 'skip',
+  }));
+
+  const returnTrace = {
+    type: 'scatter', mode: 'lines',
+    x: cumR.dates, y: cumR.values,
+    name: 'Portfolio Cumulative Return',
+    line: {color: '#5b8de8', width: 2},
+    yaxis: 'y',
+    hovertemplate: '%{x}: <b>%{y:.2f}×</b><extra></extra>',
+  };
+
+  Plotly.newPlot('regime-chart',
+    [...bandTraces, returnTrace],
+    baseLayout({
+      height: 360,
+      xaxis:  {...PLOTLY_LAYOUT_BASE.xaxis, type: 'date'},
+      // ── FIX: y-axis derived solely from the return values ──
+      yaxis:  makeCumReturnAxis(cumR.values),
+      yaxis2: {overlaying:'y', range:[0,1], visible:false, fixedrange:true},
+      legend: {x:0.01, y:0.99, bgcolor:'transparent', font:{size:11}},
+    }),
+    PLOTLY_CONFIG
+  );
+
+  // Per-regime stats table
+  const names = ['Bull','Bear','Crisis'];
+  const rows = names.map(n => {
+    const s = data.regime_stats[n];
+    if (!s || !s.days) return `<tr><td><span class="regime-badge ${n}">${n}</span></td>
+      <td colspan="5" style="color:var(--muted)">No data</td></tr>`;
+    const corrVal = data.regime_correlations?.[n];
+    return `<tr>
+      <td><span class="regime-badge ${n}">${n}</span></td>
+      <td>${s.days} days</td>
+      <td class="${s.annualized_return>=0?'pos':'neg'}">${pct(s.annualized_return)}</td>
+      <td>${pct(s.volatility)}</td>
+      <td class="neg">${pct(s.max_drawdown)}</td>
+      <td>${num(s.sharpe)}</td>
+      <td>${corrVal != null ? num(corrVal,3) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('regime-stats-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>Regime</th><th>Days</th><th>Ann. Return</th>
+        <th>Volatility</th><th>Max DD</th><th>Sharpe</th><th>Avg ρ</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE 3: FACTOR EXPOSURE
+// ═══════════════════════════════════════════════════════
+
+function renderFactors(data) {
+  const exp = data.current_exposures;
+  const mb  = exp.market_beta;
+  const fx  = exp.fx_sensitivity;
+
+  document.getElementById('factor-metrics').innerHTML =
+    metricCard('Market Beta', mb ? num(mb.coef) : '—', mb ? mb.label : '', 'accent-card') +
+    metricCard('FX Sensitivity', fx ? num(fx.coef) : '—', fx ? fx.label : '') +
+    metricCard('REIT Weight', pct(data.reit_weight), 'of total portfolio', 'warn-card') +
+    metricCard('R²', num(data.r_squared), `Adj R² ${num(data.adj_r_squared)}`);
+
+  const factors  = Object.values(exp);
+  const names    = factors.map(f => f.label);
+  const coefs    = factors.map(f => f.coef);
+  const errLow   = factors.map(f => f.coef - f.ci_low);
+  const errHigh  = factors.map(f => f.ci_high - f.coef);
+  const colors   = coefs.map(c => c >= 0 ? 'rgba(4,114,77,0.7)' : 'rgba(192,57,43,0.7)');
+
+  Plotly.newPlot('factor-bar-chart', [{
+    type: 'bar', x: coefs, y: names, orientation: 'h',
+    marker: {color: colors},
+    error_x: {type:'data', symmetric:false, array:errHigh, arrayminus:errLow, color:'#555', thickness:2, width:5},
+    hovertemplate: '<b>%{y}</b><br>Coef: %{x:.3f}<extra></extra>',
+  }], baseLayout({
+    height: 260,
+    margin: {l:180, r:20, t:10, b:40},
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, title:{text:'Coefficient',font:{size:11}}, zeroline:true,
+            ...makeCoefAxis(coefs)},
+    yaxis: {...PLOTLY_LAYOUT_BASE.yaxis, tickfont:{size:10}},
+  }), PLOTLY_CONFIG);
+
+  // ── FIX 2: rolling factor line chart — clean coefficient axis ──
+  const roll = data.rolling_exposures;
+  const rollTraces = Object.keys(exp)
+    .filter(k => roll[k] && roll[k].length)
+    .map(key => ({
+      type: 'scatter', mode: 'lines',
+      x: roll.dates, y: roll[key],
+      name: exp[key]?.label || key,
+      line: {width: 1.5},
+      hovertemplate: `%{x} — ${exp[key]?.label || key}: <b>%{y:.3f}</b><extra></extra>`,
+    }));
+
+  if (rollTraces.length) {
+    const allRollVals = rollTraces.flatMap(t => t.y).filter(v => v != null && isFinite(v));
+    Plotly.newPlot('factor-line-chart', rollTraces, baseLayout({
+      height: 260,
+      xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, type:'date'},
+      // ── FIX: use makeCoefAxis which prevents runaway tiny decimals ──
+      yaxis: makeCoefAxis(allRollVals, 'Coefficient'),
+    }), PLOTLY_CONFIG);
+  } else {
+    document.getElementById('factor-line-chart').innerHTML =
+      '<p style="color:var(--muted);padding:20px;text-align:center;font-size:12px;">Insufficient data for rolling window.</p>';
+  }
+
+  const soraEl = document.getElementById('factor-sora-source');
+  if (soraEl) {
+    soraEl.textContent = data.sora_source
+      ? `SGD rate sensitivity proxied by ${data.sora_source} (sign-adjusted: positive = rising rates). Positive coefficient = benefits from rising rates. Negative coefficient = rate-sensitive / hurt by rising rates.`
+      : '';
+  }
+
+  document.getElementById('factor-descriptions').innerHTML = factors.map(f => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+      <span style="font-weight:600;color:var(--accent2);">${f.label}</span>
+      <span style="color:var(--muted);margin-left:12px;font-size:12px;">${f.description}</span>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE 4: TAIL RISK
+// ═══════════════════════════════════════════════════════
+
+function renderTailRisk(data) {
+  const dd = data.max_drawdown;
+  document.getElementById('tail-metrics').innerHTML =
+    metricCard('99% VaR (1-Day)', pct(data.var_99_1d), 'Historical', 'danger-card') +
+    metricCard('99% CVaR (1-Day)', pct(data.cvar_99_1d), 'Expected Shortfall') +
+    metricCard('Max Drawdown', pct(dd.depth), `${dd.peak_date} → ${dd.trough_date}`, 'danger-card') +
+    metricCard('Ann. Volatility', pct(data.summary.annualized_vol),
+               `Skew: ${num(data.summary.skewness)} | Kurt: ${num(data.summary.kurtosis)}`);
+
+  // Return distribution — values are raw returns (e.g. -0.015), convert to %
+  const hist      = data.return_histogram;
+  const midpoints = hist.bins.slice(0, -1).map((b, i) => (b + hist.bins[i + 1]) / 2);
+  const xPct      = midpoints.map(v => v * 100);   // display in %
+  const var95Pct  = data.var_95_1d * 100;
+  const var99Pct  = data.var_99_1d * 100;
+
+  const barColors = xPct.map(x =>
+    x <= var99Pct ? 'rgba(192,57,43,0.9)'
+    : x <= var95Pct ? 'rgba(212,151,58,0.8)'
+    : 'rgba(4,114,77,0.6)'
+  );
+
+  Plotly.newPlot('tail-histogram', [{
+    type: 'bar', x: xPct, y: hist.counts,
+    marker: {color: barColors},
+    name: 'Daily Returns',
+    hovertemplate: 'Return: %{x:.2f}%<br>Count: %{y}<extra></extra>',
+  }], baseLayout({
+    height: 300,
+    barmode: 'overlay',
+    shapes: [
+      {type:'line', xref:'x', yref:'paper', x0:var95Pct, x1:var95Pct, y0:0, y1:1,
+       line:{color:'rgba(212,151,58,0.9)', width:1.5, dash:'dash'}},
+      {type:'line', xref:'x', yref:'paper', x0:var99Pct, x1:var99Pct, y0:0, y1:1,
+       line:{color:'rgba(192,57,43,0.9)', width:1.5, dash:'dash'}},
+    ],
+    annotations: [
+      {x:var95Pct, y:Math.max(...hist.counts)*0.85, xref:'x', yref:'y',
+       text:`95% VaR: ${var95Pct.toFixed(2)}%`, showarrow:true, arrowhead:2, ax:45, ay:0,
+       font:{size:10,color:'rgba(212,151,58,0.9)'}, arrowcolor:'rgba(212,151,58,0.9)'},
+      {x:var99Pct, y:Math.max(...hist.counts)*0.70, xref:'x', yref:'y',
+       text:`99% VaR: ${var99Pct.toFixed(2)}%`, showarrow:true, arrowhead:2, ax:45, ay:0,
+       font:{size:10,color:'rgba(192,57,43,0.9)'}, arrowcolor:'rgba(192,57,43,0.9)'},
+    ],
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, title:{text:'Daily Return (%)',font:{size:11}},
+            tickformat:'.1f', ticksuffix:'%'},
+    yaxis: {...PLOTLY_LAYOUT_BASE.yaxis, title:{text:'Frequency',font:{size:11}}},
+  }), PLOTLY_CONFIG);
+
+  // ── FIX 3: Rolling max drawdown — values from backend are already fractions ──
+  // Convert to % ONCE here. Do NOT multiply again in makeYAxis.
+  const rdd    = data.rolling_max_drawdown;
+  const rddPct = rdd.values.map(v => {
+    const n = Number(v);
+    // Guard: if backend accidentally sent already-multiplied values, clamp to sane range
+    if (!isFinite(n)) return null;
+    const asPct = n * 100;
+    // Drawdowns should be negative and reasonably bounded; if not, value was already in %
+    return (asPct < -200 || asPct > 200) ? n : asPct;
+  }).filter(v => v != null);
+
+  Plotly.newPlot('tail-drawdown-chart', [{
+    type: 'scatter', mode: 'lines', fill: 'tozeroy',
+    x: rdd.dates, y: rddPct,
+    name: '12M Rolling Max DD',
+    line: {color:'rgba(192,57,43,0.8)', width:1.5},
+    fillcolor: 'rgba(192,57,43,0.12)',
+    hovertemplate: '%{x}: <b>%{y:.1f}%</b><extra></extra>',
+  }], baseLayout({
+    height: 300,
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, type:'date'},
+    // ── FIX: axis built from the actual % values, 2 sig figs ──
+    yaxis: makePctAxis(rddPct, 'Max Drawdown (%)'),
+  }), PLOTLY_CONFIG);
+
+  // Worst 10 days table
+  const rows = data.worst_10_days.map(day => {
+    const entries = Object.entries(day.contributors).sort((a, b) => a[1] - b[1]);
+    const topNeg  = entries.slice(0, 3).map(([t, v]) => `${t}: ${pct(v)}`).join(', ');
+    return `<tr>
+      <td>${day.date}</td>
+      <td class="neg">${pct(day.portfolio_return)}</td>
+      <td style="font-size:11px;color:var(--muted);">${topNeg}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tail-worst-days').innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Date</th><th>Portfolio Return</th><th>Top Negative Contributors</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE 5: HEDGING OFFSETS
+// ═══════════════════════════════════════════════════════
+
+function renderHedging(data) {
+  document.getElementById('hedge-metrics').innerHTML =
+    metricCard('Portfolio Vol', pct(data.portfolio_vol), 'Annualised', 'accent-card') +
+    metricCard('Bear Days',   data.n_bear_days,   'in analysis period', 'warn-card') +
+    metricCard('Crisis Days', data.n_crisis_days, 'in analysis period', 'danger-card');
+
+  const instruments = Object.entries(data.instruments).filter(([, v]) => v.available);
+  if (!instruments.length) {
+    document.getElementById('hedge-corr-chart').innerHTML =
+      '<p style="color:var(--muted);padding:20px;text-align:center;">No hedge instrument data available.</p>';
+    return;
+  }
+
+  const names      = instruments.map(([k]) => k);
+  const bearCorrs  = instruments.map(([, v]) => v.bear_correlation   ?? null);
+  const crisisCorrs= instruments.map(([, v]) => v.crisis_correlation ?? null);
+
+  Plotly.newPlot('hedge-corr-chart', [
+    {type:'bar', name:'Bear Correlation',   x:names, y:bearCorrs,
+     marker:{color:'rgba(212,151,58,0.75)'},
+     hovertemplate:'%{x}<br>Bear corr: <b>%{y:.2f}</b><extra></extra>'},
+    {type:'bar', name:'Crisis Correlation', x:names, y:crisisCorrs,
+     marker:{color:'rgba(192,57,43,0.75)'},
+     hovertemplate:'%{x}<br>Crisis corr: <b>%{y:.2f}</b><extra></extra>'},
+  ], baseLayout({
+    height: 300, barmode:'group',
+    shapes: [{type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:0,y1:0,line:{color:'#444',width:1,dash:'dot'}}],
+    xaxis:  {...PLOTLY_LAYOUT_BASE.xaxis, tickangle:-20},
+    yaxis:  {...PLOTLY_LAYOUT_BASE.yaxis, title:{text:'Correlation',font:{size:11}}, range:[-1,1],
+             tickformat:'.2f'},
+  }), PLOTLY_CONFIG);
+
+  const vol10 = instruments.map(([, v]) => (v.portfolio_vol_reduction_10pct ?? 0) * 100);
+  const vol20 = instruments.map(([, v]) => (v.portfolio_vol_reduction_20pct ?? 0) * 100);
+  const allVol= [...vol10, ...vol20].filter(v => isFinite(v));
+
+  Plotly.newPlot('hedge-vol-chart', [
+    {type:'bar', name:'10% allocation', x:names, y:vol10,
+     marker:{color:'rgba(4,114,77,0.6)'},
+     hovertemplate:'%{x}<br>Vol reduction: <b>%{y:.2f}%</b><extra></extra>'},
+    {type:'bar', name:'20% allocation', x:names, y:vol20,
+     marker:{color:'rgba(91,141,232,0.7)'},
+     hovertemplate:'%{x}<br>Vol reduction: <b>%{y:.2f}%</b><extra></extra>'},
+  ], baseLayout({
+    height: 300, barmode:'group',
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, tickangle:-20},
+    yaxis: makePctAxis(allVol, 'Ann. Vol Reduction (pp)'),
+  }), PLOTLY_CONFIG);
+
+  const tableRows = instruments.map(([name, v]) => {
+    const bear   = v.bear_correlation   != null ? num(v.bear_correlation,   3) : '—';
+    const crisis = v.crisis_correlation != null ? num(v.crisis_correlation, 3) : '—';
+    const w20    = v.avg_return_worst20_days != null ? pct(v.avg_return_worst20_days, 2) : '—';
+    const red10  = pct(v.portfolio_vol_reduction_10pct, 2);
+    const red20  = pct(v.portfolio_vol_reduction_20pct, 2);
+    return `<tr>
+      <td style="font-weight:600;">${name}</td>
+      <td class="${parseFloat(bear)   < 0 ? 'pos' : 'neg'}">${bear}</td>
+      <td class="${parseFloat(crisis) < 0 ? 'pos' : 'neg'}">${crisis}</td>
+      <td class="${parseFloat(w20)   >= 0 ? 'pos' : 'neg'}">${w20}</td>
+      <td class="${parseFloat(red10) >= 0 ? 'pos' : 'neg'}">${red10}</td>
+      <td class="${parseFloat(red20) >= 0 ? 'pos' : 'neg'}">${red20}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('hedge-table').innerHTML = `
+    <p style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+      All figures are historically observed. Negative correlation during stress = instrument moved against portfolio (effective offset). Green = favourable offset characteristic.
+    </p>
+    <table class="data-table">
+      <thead><tr>
+        <th>Instrument</th><th>Bear Corr</th><th>Crisis Corr</th>
+        <th>Avg Return (Worst 20 Days)</th><th>Vol Reduction @10%</th><th>Vol Reduction @20%</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE 6: BENCHMARK COMPARISON
+// ═══════════════════════════════════════════════════════
+
+function renderBenchmark(data) {
+  const tick = data.benchmark_ticker || 'ES3.SI';
+  const ps   = data.portfolio_stats;
+  const bs   = data.benchmark_stats;
+
+  const alphaSign = data.alpha >= 0 ? '+' : '';
+  document.getElementById('bench-metrics').innerHTML =
+    metricCard('Alpha (Ann.)', `${alphaSign}${pct(data.alpha)}`,    `vs ${tick}`, data.alpha >= 0 ? 'accent-card' : 'danger-card') +
+    metricCard('Beta',         num(data.beta),                       `R² ${num(data.r_squared)}`) +
+    metricCard('Tracking Error', pct(data.tracking_error),           'Annualised active risk', 'warn-card') +
+    metricCard('Info Ratio',   num(data.information_ratio),          'Ann. alpha / tracking error');
+
+  // ── Cumulative return chart ──
+  Plotly.newPlot('bench-cum-chart', [
+    {
+      type: 'scatter', mode: 'lines',
+      x: data.dates, y: data.portfolio_cumulative,
+      name: 'Portfolio',
+      line: {color: '#5b8de8', width: 2},
+      hovertemplate: '%{x}: <b>%{y:.2f}×</b><extra>Portfolio</extra>',
+    },
+    {
+      type: 'scatter', mode: 'lines',
+      x: data.dates, y: data.benchmark_cumulative,
+      name: `STI ETF (${tick})`,
+      line: {color: '#d4973a', width: 2, dash: 'dot'},
+      hovertemplate: `%{x}: <b>%{y:.2f}×</b><extra>${tick}</extra>`,
+    },
+  ], baseLayout({
+    height: 340,
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, type: 'date'},
+    yaxis: makeCumReturnAxis([...data.portfolio_cumulative, ...data.benchmark_cumulative]),
+    legend: {x: 0.01, y: 0.99, bgcolor: 'transparent', font: {size: 11}},
+  }), PLOTLY_CONFIG);
+
+  // ── Rolling 12-month return chart ──
+  const roll = data.rolling_12m;
+  const rollPctP = roll.portfolio.map(v => v * 100);
+  const rollPctB = roll.benchmark.map(v => v * 100);
+  Plotly.newPlot('bench-roll-chart', [
+    {
+      type: 'scatter', mode: 'lines',
+      x: roll.dates, y: rollPctP,
+      name: 'Portfolio',
+      line: {color: '#5b8de8', width: 1.5},
+      hovertemplate: '%{x}: <b>%{y:.1f}%</b><extra>Portfolio</extra>',
+    },
+    {
+      type: 'scatter', mode: 'lines',
+      x: roll.dates, y: rollPctB,
+      name: `${tick}`,
+      line: {color: '#d4973a', width: 1.5, dash: 'dot'},
+      hovertemplate: `%{x}: <b>%{y:.1f}%</b><extra>${tick}</extra>`,
+    },
+  ], baseLayout({
+    height: 300,
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, type: 'date'},
+    yaxis: makePctAxis([...rollPctP, ...rollPctB], '12M Return (%)'),
+    legend: {x: 0.01, y: 0.99, bgcolor: 'transparent', font: {size: 11}},
+    shapes: [{type:'line', xref:'paper', yref:'y', x0:0, x1:1, y0:0, y1:0,
+              line:{color:'#444', width:1, dash:'dot'}}],
+  }), PLOTLY_CONFIG);
+
+  // ── Calendar year bar chart ──
+  const yearly = data.calendar_year_returns;
+  const years  = Object.keys(yearly).sort();
+  const yrP    = years.map(y => (yearly[y].portfolio * 100));
+  const yrB    = years.map(y => (yearly[y].benchmark  * 100));
+  Plotly.newPlot('bench-yearly-chart', [
+    {type:'bar', name:'Portfolio', x:years, y:yrP,
+     marker:{color:'rgba(91,141,232,0.75)'},
+     hovertemplate:'%{x}: <b>%{y:.1f}%</b><extra>Portfolio</extra>'},
+    {type:'bar', name:`${tick}`,   x:years, y:yrB,
+     marker:{color:'rgba(212,151,58,0.75)'},
+     hovertemplate:`%{x}: <b>%{y:.1f}%</b><extra>${tick}</extra>`},
+  ], baseLayout({
+    height: 300, barmode: 'group',
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, tickangle: -30},
+    yaxis: makePctAxis([...yrP, ...yrB], 'Annual Return (%)'),
+    legend: {x: 0.01, y: 0.99, bgcolor: 'transparent', font: {size: 11}},
+    shapes: [{type:'line', xref:'paper', yref:'y', x0:0, x1:1, y0:0, y1:0,
+              line:{color:'#444', width:1, dash:'dot'}}],
+  }), PLOTLY_CONFIG);
+
+  // ── Stats comparison table ──
+  function fmtStat(v, isReturn) {
+    if (v == null) return '—';
+    return isReturn ? pct(v) : (typeof v === 'number' ? num(v) : v);
+  }
+  const rows = [
+    ['Annualised Return', pct(ps.annualized_return), pct(bs.annualized_return),
+     ps.annualized_return >= bs.annualized_return],
+    ['Annualised Volatility', pct(ps.annualized_vol), pct(bs.annualized_vol),
+     ps.annualized_vol <= bs.annualized_vol],
+    ['Sharpe Ratio', num(ps.sharpe), num(bs.sharpe),
+     ps.sharpe >= bs.sharpe],
+    ['Max Drawdown', pct(ps.max_drawdown), pct(bs.max_drawdown),
+     ps.max_drawdown >= bs.max_drawdown],
+  ].map(([label, pVal, bVal, portWins]) => `<tr>
+    <td style="font-weight:500;">${label}</td>
+    <td class="${portWins ? 'pos' : 'neg'}">${pVal}</td>
+    <td>${bVal}</td>
+  </tr>`).join('');
+
+  document.getElementById('bench-stats-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Metric</th><th>Portfolio</th><th>STI ETF (${tick})</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="margin-top:10px;font-size:11px;color:var(--muted);">
+      Alpha: <strong style="color:${data.alpha>=0?'var(--accent2)':'var(--danger)'}">${(data.alpha >= 0 ? '+' : '') + pct(data.alpha)}</strong>
+      &nbsp;·&nbsp; Beta: <strong>${num(data.beta)}</strong>
+      &nbsp;·&nbsp; Tracking Error: <strong>${pct(data.tracking_error)}</strong>
+      &nbsp;·&nbsp; Information Ratio: <strong>${num(data.information_ratio)}</strong>
+    </p>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MODULE 7: CONSTRUCTION SCENARIOS
+// ═══════════════════════════════════════════════════════
+
+let csObjective = 'sharpe';
+
+document.querySelectorAll('#cs-objective-group .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#cs-objective-group .toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    csObjective = btn.dataset.obj;
+  });
+});
+
+const CS_PROGRESS_STEPS = [
+  'Preparing portfolio risk profile...',
+  'Pass 1: Claude pre-screening',
+  'Pass 1 complete',
+  'Pass 2: Running marginal',
+  'Pass 2 complete',
+  'Pass 3: Generating AI',
+  'Complete.',
+];
+
+function csSetProgress(msg) {
+  document.getElementById('cs-msg').textContent = msg;
+  const idx = CS_PROGRESS_STEPS.findIndex(s => msg.startsWith(s.substring(0, 18)));
+  const pct = idx >= 0 ? Math.round((idx + 1) / CS_PROGRESS_STEPS.length * 100) : 50;
+  document.getElementById('cs-bar').style.width = pct + '%';
+}
+
+async function runConstruction() {
+  if (!state.loadedData) { alert('Run the main portfolio analysis first.'); return; }
+
+  const btn = document.getElementById('cs-run-btn');
+  btn.disabled = true;
+
+  document.getElementById('cs-progress').style.display = 'block';
+  document.getElementById('cs-bar').style.width = '5%';
+  document.getElementById('cs-msg').textContent = 'Starting...';
+  document.getElementById('cs-scenarios').style.display = 'none';
+  document.getElementById('cs-weight-chart-wrap').style.display = 'none';
+  document.getElementById('cs-strategic-wrap').style.display = 'none';
+  document.getElementById('cs-fallback-badge').style.display = 'none';
+
+  const total = state.holdings.reduce((s, h) => s + h.weight, 0) || 100;
+  const portfolio = {};
+  state.holdings.forEach(h => { portfolio[h.ticker] = h.weight / total; });
+
+  try {
+    const es = new EventSource('/api/construction-scenarios?' +
+      new URLSearchParams({}).toString());
+
+    // SSE uses POST — can't use EventSource directly for POST.
+    // Use fetch + ReadableStream instead.
+    es.close();
+
+    const res = await fetch('/api/construction-scenarios', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({portfolio, objective: csObjective}),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({error: res.statusText}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let resultPayload = null;
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.event) csSetProgress(parsed.event);
+          if (parsed.error) throw new Error(parsed.error);
+          if (parsed.result) resultPayload = parsed.result;
+        } catch (e) {
+          if (e.message && !e.message.includes('JSON')) throw e;
+        }
+      }
+    }
+
+    document.getElementById('cs-progress').style.display = 'none';
+
+    if (!resultPayload) throw new Error('No result received from server.');
+    renderConstructionScenarios(resultPayload);
+
+  } catch (err) {
+    document.getElementById('cs-progress').style.display = 'none';
+    document.getElementById('cs-msg').textContent = 'Error: ' + err.message;
+    const panel = document.getElementById('tab-construction');
+    const errEl = document.createElement('div');
+    errEl.className = 'warning-block';
+    errEl.textContent = 'Construction analysis error: ' + err.message;
+    panel.prepend(errEl);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderConstructionScenarios(data) {
+  if (data.prescreening_fallback) {
+    document.getElementById('cs-fallback-badge').style.display = 'block';
+  }
+
+  const scenarios = data.scenarios || {};
+  const baseline = data.baseline_metrics || {};
+
+  const scenarioKeys = ['A', 'B', 'C'];
+  const scenarioEl = document.getElementById('cs-scenarios');
+  scenarioEl.innerHTML = '';
+
+  const metricLabels = [
+    {key: 'return',       label: 'Ann. Return',    higherBetter: true,  fmt: v => (v * 100).toFixed(2) + '%'},
+    {key: 'vol',          label: 'Volatility',     higherBetter: false, fmt: v => (v * 100).toFixed(2) + '%'},
+    {key: 'sharpe',       label: 'Sharpe',         higherBetter: true,  fmt: v => v.toFixed(3)},
+    {key: 'cvar_99',      label: 'CVaR 99%',       higherBetter: false, fmt: v => (v * 100).toFixed(2) + '%'},
+    {key: 'max_drawdown', label: 'Max Drawdown',   higherBetter: false, fmt: v => (v * 100).toFixed(2) + '%'},
+  ];
+
+  scenarioKeys.forEach(key => {
+    const sc = scenarios[key];
+    if (!sc) return;
+
+    // Proposed changes
+    const addHtml = (sc.additions || []).map(a => `
+      <div class="cs-item">
+        <div class="cs-item-row">
+          <span class="cs-icon-add">+</span>
+          <span class="cs-item-name">${a.name || a.ticker} <small style="color:var(--muted)">(${a.ticker})</small></span>
+          ${a.liquidity_warning ? '<span class="cs-liq-badge">Low Liquidity</span>' : ''}
+        </div>
+        ${a.rationale ? `<div class="cs-item-rat">${a.rationale}</div>` : ''}
+      </div>`).join('');
+
+    const remHtml = (sc.removals || []).map(r => `
+      <div class="cs-item">
+        <div class="cs-item-row">
+          <span class="cs-icon-rem">−</span>
+          <span class="cs-item-name">${r.name || r.ticker} <small style="color:var(--muted)">(${r.ticker})</small></span>
+        </div>
+        ${r.rationale ? `<div class="cs-item-rat">${r.rationale}</div>` : ''}
+      </div>`).join('');
+
+    // Metrics table
+    const metricRows = metricLabels.map(m => {
+      const before = (sc.metrics_before || {})[m.key];
+      const after  = (sc.metrics_after  || {})[m.key];
+      const delta  = (sc.metrics_delta  || {})[m.key];
+      const improved = delta != null && (m.higherBetter ? delta > 0 : delta < 0);
+      const deltaSign = delta != null ? (delta > 0 ? '+' : '') : '';
+      const deltaFmt = delta != null ? deltaSign + (m.fmt(delta)) : '—';
+      return `<tr>
+        <td style="font-weight:500;color:var(--muted)">${m.label}</td>
+        <td>${before != null ? m.fmt(before) : '—'}</td>
+        <td>${after  != null ? m.fmt(after)  : '—'}</td>
+        <td class="${improved ? 'cs-delta-pos' : 'cs-delta-neg'}">${deltaFmt}</td>
+      </tr>`;
+    }).join('');
+
+    // AI interpretation
+    const aiText = sc.ai_interpretation || '';
+    const preview = aiText ? aiText.split('. ').slice(0, 2).join('. ') + '.' : '';
+    const aiHtml = data.interpretation_unavailable || !aiText
+      ? `<div class="cs-ai-block"><div style="padding:10px 14px;font-size:11px;color:var(--muted);">AI interpretation unavailable for this scenario.</div></div>`
+      : `<div class="cs-ai-block">
+          <button class="cs-ai-toggle" onclick="csToggleAI(this)">
+            <span>AI Interpretation</span><span class="cs-chevron">▼</span>
+          </button>
+          <div class="cs-ai-preview">${preview}</div>
+          <div class="cs-ai-body">${aiText}</div>
+        </div>`;
+
+    const card = document.createElement('div');
+    card.className = 'cs-card';
+    card.innerHTML = `
+      <div class="cs-card-header">${key} — ${sc.label || key}</div>
+      <div class="cs-changes">${addHtml}${remHtml}</div>
+      <table class="cs-metrics-table">
+        <thead><tr><th>Metric</th><th>Before</th><th>After</th><th>Delta</th></tr></thead>
+        <tbody>${metricRows}</tbody>
+      </table>
+      ${aiHtml}
+    `;
+    scenarioEl.appendChild(card);
+  });
+
+  scenarioEl.style.display = 'flex';
+
+  // ── Weight comparison chart ──
+  const allTickers = new Set();
+  state.holdings.forEach(h => allTickers.add(h.ticker));
+  scenarioKeys.forEach(k => {
+    const sc = scenarios[k];
+    if (sc && sc.proposed_weights) Object.keys(sc.proposed_weights).forEach(t => allTickers.add(t));
+  });
+  const tickerList = Array.from(allTickers);
+
+  const total = state.holdings.reduce((s, h) => s + h.weight, 0) || 100;
+  const currentWeights = {};
+  state.holdings.forEach(h => { currentWeights[h.ticker] = h.weight / total; });
+
+  const colors = {current: '#555', A: '#a3d9c0', B: '#04724D', C: '#023d2b'};
+  const traces = [
+    {
+      name: 'Current', x: tickerList,
+      y: tickerList.map(t => (currentWeights[t] || 0) * 100),
+      type: 'bar', marker: {color: colors.current},
+      hovertemplate: '%{x}: <b>%{y:.1f}%</b><extra>Current</extra>',
+    },
+    ...scenarioKeys.map(k => {
+      const sc = scenarios[k];
+      const w = (sc && sc.proposed_weights) || {};
+      return {
+        name: `Scenario ${k}`, x: tickerList,
+        y: tickerList.map(t => (w[t] || 0) * 100),
+        type: 'bar', marker: {color: colors[k]},
+        hovertemplate: `%{x}: <b>%{y:.1f}%</b><extra>Scenario ${k}</extra>`,
+      };
+    }),
+  ];
+
+  const allPcts = traces.flatMap(t => t.y).filter(v => isFinite(v));
+  Plotly.newPlot('cs-weight-chart', traces, baseLayout({
+    height: 340, barmode: 'group',
+    xaxis: {...PLOTLY_LAYOUT_BASE.xaxis, tickangle: -40},
+    yaxis: makePctAxis(allPcts, 'Weight (%)'),
+    legend: {x: 0.01, y: 0.99, bgcolor: 'transparent', font: {size: 11}},
+  }), PLOTLY_CONFIG);
+
+  document.getElementById('cs-weight-chart-wrap').style.display = 'block';
+
+  // ── Strategic Signal ──
+  if (data.strategic_signal) {
+    document.getElementById('cs-strategic-text').textContent = data.strategic_signal;
+    document.getElementById('cs-strategic-wrap').style.display = 'block';
+  }
+}
+
+function csToggleAI(btn) {
+  const card = btn.closest('.cs-ai-block');
+  const body = card.querySelector('.cs-ai-body');
+  const preview = card.querySelector('.cs-ai-preview');
+  const chevron = btn.querySelector('.cs-chevron');
+  const isOpen = body.style.display === 'block';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (preview) preview.style.display = isOpen ? 'block' : 'none';
+  chevron.textContent = isOpen ? '▼' : '▲';
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+
+(function init() {
+  renderPortfolioTable();
+  hideLoading();
+  runAnalysis();
+})();
+</script>
+</body>
+</html>

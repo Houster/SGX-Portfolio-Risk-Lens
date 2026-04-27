@@ -1,0 +1,7 @@
+PAI_env/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git/
+.DS_Store
