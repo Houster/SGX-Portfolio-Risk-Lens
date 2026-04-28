@@ -909,6 +909,10 @@ def run_construction_analysis(
     if not port_tickers:
         return {"error": "No portfolio tickers found in returns data."}
 
+    # returns_data may be a price DataFrame (as passed from main.py); convert once here
+    # so every downstream use works with daily returns, not price levels.
+    port_returns_df = returns_data.pct_change().dropna()
+
     total_w = sum(current_portfolio[t] for t in port_tickers)
     norm_weights = {t: current_portfolio[t] / total_w for t in port_tickers}
 
@@ -949,7 +953,7 @@ def run_construction_analysis(
         common_idx = common_idx.intersection(universe_returns.index)
 
     all_returns = pd.concat([
-        returns_data[port_tickers],
+        port_returns_df[port_tickers],
         universe_returns[[t for t in add_candidates if t in universe_returns.columns]],
     ], axis=1).loc[common_idx].dropna(how="all")
 
