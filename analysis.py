@@ -18,7 +18,7 @@ from pathlib import Path
 
 load_dotenv()
 
-CACHE_DIR = Path(os.getenv("PRICE_CACHE_DIR", "/home/ubuntu/price_cache"))
+CACHE_DIR = Path(os.getenv("PRICE_CACHE_DIR", str(Path.home() / "price_cache")))
 
 def _cache_path(ticker: str) -> Path:
     safe = ticker.replace("=", "_").replace("^", "_").replace("/", "_")
