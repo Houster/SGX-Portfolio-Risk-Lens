@@ -15,6 +15,8 @@ import requests
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
+import csv
+import time
 
 load_dotenv()
 
@@ -33,6 +35,93 @@ def _build_yf_session():
     return session
 
 _YF_SESSION = _build_yf_session()
+
+CACHE_DIR = Path(os.getenv("PRICE_CACHE_DIR", "/home/ubuntu/price_cache"))
+CACHE_TTL_HOURS = 24
+
+def _cache_path(ticker: str) -> Path:
+    safe = ticker.replace("=", "_").replace("^", "_").replace("/", "_")
+    return CACHE_DIR / f"{safe}.csv"
+
+def _cache_is_fresh(ticker: str) -> bool:
+    p = _cache_path(ticker)
+    if not p.exists():
+        return False
+    age_hours = (time.time() - p.stat().st_mtime) / 3600
+    return age_hours < CACHE_TTL_HOURS
+
+def _read_cache(ticker: str) -> Optional[pd.Series]:
+    try:
+        df = pd.read_csv(_cache_path(ticker), index_col=0, parse_dates=True)
+        if df.empty:
+            return None
+        s = df.iloc[:, 0]
+        s.name = ticker
+        return s
+    except Exception:
+        return None
+
+def _write_cache(ticker: str, series: pd.Series) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    series.to_csv(_cache_path(ticker), header=["Close"])
+
+def _fetch_alpha_vantage(ticker: str, start: datetime, end: datetime) -> Optional[pd.Series]:
+    """Fetch daily adjusted close from Alpha Vantage."""
+    import urllib.request
+    
+    av_key = os.getenv("ALPHA_VANTAGE_KEY")
+    if not av_key:
+        return None
+
+    # Alpha Vantage uses different ticker format for SGX — strip .SI suffix
+    av_ticker = ticker.replace(".SI", ".SI")  # SGX tickers work as-is
+    
+    # Map known aux tickers
+    ticker_map = {
+        "SGDUSD=X": "USDSGD",   # AV uses inverted pair, we'll flip later
+        "GC=F":     "XAUUSD",   # Gold in USD
+        "AAXJ":     "AAXJ",
+        "AXJR":     "AXJR",
+        "ES3.SI":   "ES3.SI",
+    }
+    av_ticker = ticker_map.get(ticker, ticker)
+    invert = ticker == "SGDUSD=X"  # AV gives USDSGD, we need SGDUSD
+
+    url = (
+        f"https://www.alphavantage.co/query"
+        f"?function=TIME_SERIES_DAILY_ADJUSTED"
+        f"&symbol={av_ticker}"
+        f"&outputsize=full"
+        f"&apikey={av_key}"
+        f"&datatype=csv"
+    )
+
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            lines = resp.read().decode("utf-8").splitlines()
+        
+        if not lines or "timestamp" not in lines[0]:
+            return None
+
+        reader = csv.DictReader(lines)
+        rows = [(r["timestamp"], float(r["adjusted_close"])) for r in reader]
+        if not rows:
+            return None
+
+        idx = pd.to_datetime([r[0] for r in rows])
+        vals = [r[1] for r in rows]
+        s = pd.Series(vals, index=idx, name=ticker).sort_index()
+
+        if invert:
+            s = 1.0 / s  # flip USDSGD → SGDUSD
+
+        # Filter to requested window
+        s = s[(s.index >= pd.Timestamp(start)) & (s.index <= pd.Timestamp(end))]
+        return s if len(s) >= 20 else None
+
+    except Exception as e:
+        logging.warning(f"Alpha Vantage fetch failed for {ticker}: {e}")
+        return None
 
 
 PERIOD_DAYS: Dict[str, int] = {"1y": 365, "3y": 1095, "5y": 1825}
@@ -120,22 +209,21 @@ def _rolling_ols_params(
 # ─── Data Fetching ────────────────────────────────────────────────────────────
 
 def _download_one(ticker: str, start: datetime, end: datetime) -> Optional[pd.Series]:
-    try:
-        df = yf.download(
-            ticker, start=start, end=end,
-            auto_adjust=True, progress=False, threads=False,
-            session=_YF_SESSION,
-        )
-        if df is None or len(df) < 20:
-            return None
-        close = df["Close"]
-        if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]
-        close = close.squeeze()
-        close.name = ticker
-        return close
-    except Exception:
-        return None
+    # Serve from disk cache if fresh
+    if _cache_is_fresh(ticker):
+        cached = _read_cache(ticker)
+        if cached is not None:
+            filtered = cached[(cached.index >= pd.Timestamp(start)) & 
+                              (cached.index <= pd.Timestamp(end))]
+            return filtered if len(filtered) >= 20 else None
+
+    # Fetch from Alpha Vantage
+    series = _fetch_alpha_vantage(ticker, start, end)
+    if series is not None and len(series) >= 20:
+        _write_cache(ticker, series)
+        return series
+
+    return None
 
 
 def fetch_sora_proxy(start: datetime, end: datetime) -> Tuple[Optional[pd.Series], str]:
