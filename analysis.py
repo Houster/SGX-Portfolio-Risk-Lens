@@ -13,6 +13,26 @@ from typing import Dict, List, Optional, Any, Tuple
 import yfinance as yf
 import requests
 from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def _build_yf_session():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    })
+    proxy_user = os.getenv("PROXY_USER")
+    proxy_pass = os.getenv("PROXY_PASS")
+    proxy_host = os.getenv("PROXY_HOST")
+    proxy_port = os.getenv("PROXY_PORT")
+    if proxy_user and proxy_host:
+        proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
+        session.proxies.update({"http": proxy_url, "https": proxy_url})
+    return session
+
+_YF_SESSION = _build_yf_session()
 
 
 PERIOD_DAYS: Dict[str, int] = {"1y": 365, "3y": 1095, "5y": 1825}
@@ -104,6 +124,7 @@ def _download_one(ticker: str, start: datetime, end: datetime) -> Optional[pd.Se
         df = yf.download(
             ticker, start=start, end=end,
             auto_adjust=True, progress=False, threads=False,
+            session=_YF_SESSION,
         )
         if df is None or len(df) < 20:
             return None
