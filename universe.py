@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 import pandas as pd
-import yfinance as yf
+from analysis import _download_one
 
 logger = logging.getLogger(__name__)
 
@@ -131,25 +131,16 @@ def prefetch_universe(timeout_seconds: int = 60) -> None:
                     excluded.append(remaining)
                 break
             try:
-                df = yf.download(
-                    ticker, start=start_date, end=end_date,
-                    auto_adjust=True, progress=False, threads=False,
-                )
-                if df is None or len(df) < 20:
+                cutoff = end_date - timedelta(days=3 * 365)
+                series = _download_one(ticker, start_date, end_date)
+
+                if series is None or len(series) < 20:
                     logger.info(f"Universe pre-fetch: {ticker} — insufficient data, excluding")
                     excluded.append(ticker)
                     logger.info(f"Fetching universe data: {i+1}/{len(ALL_TICKERS)} complete.")
                     continue
 
-                close = df["Close"]
-                if isinstance(close, pd.DataFrame):
-                    close = close.iloc[:, 0]
-                close = close.squeeze()
-                close.name = ticker
-
-                # Check missing data after alignment
-                cutoff = end_date - timedelta(days=3 * 365)
-                trimmed = close[close.index >= pd.Timestamp(cutoff)]
+                trimmed = series[series.index >= pd.Timestamp(cutoff)]
                 if len(trimmed) > 0:
                     missing_pct = trimmed.isna().mean()
                     if missing_pct > 0.10:
