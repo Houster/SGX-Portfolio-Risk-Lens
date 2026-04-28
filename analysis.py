@@ -1,7 +1,8 @@
 """
 Pure quantitative analysis functions for SGX Portfolio Risk Lens.
 All functions are stateless — they take data in, return dicts out.
-Dependencies: pandas, numpy, yfinance, requests (no scipy/statsmodels required).
+Dependencies: pandas, numpy (no scipy/statsmodels required).
+Price data is read exclusively from disk cache populated by sync_prices.py.
 """
 import logging
 import warnings
@@ -10,46 +11,18 @@ warnings.filterwarnings("ignore")
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
-import yfinance as yf
-import requests
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-import csv
-import time
 from pathlib import Path
 
 load_dotenv()
 
-def _build_yf_session():
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    })
-    proxy_user = os.getenv("PROXY_USER")
-    proxy_pass = os.getenv("PROXY_PASS")
-    proxy_host = os.getenv("PROXY_HOST")
-    proxy_port = os.getenv("PROXY_PORT")
-    if proxy_user and proxy_host:
-        proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
-        session.proxies.update({"http": proxy_url, "https": proxy_url})
-    return session
-
-_YF_SESSION = _build_yf_session()
-
 CACHE_DIR = Path(os.getenv("PRICE_CACHE_DIR", "/home/ubuntu/price_cache"))
-CACHE_TTL_HOURS = 24
 
 def _cache_path(ticker: str) -> Path:
     safe = ticker.replace("=", "_").replace("^", "_").replace("/", "_")
     return CACHE_DIR / f"{safe}.csv"
-
-def _cache_is_fresh(ticker: str) -> bool:
-    p = _cache_path(ticker)
-    if not p.exists():
-        return False
-    age_hours = (time.time() - p.stat().st_mtime) / 3600
-    return age_hours < CACHE_TTL_HOURS
 
 def _read_cache(ticker: str) -> Optional[pd.Series]:
     try:
@@ -60,68 +33,6 @@ def _read_cache(ticker: str) -> Optional[pd.Series]:
         s.name = ticker
         return s
     except Exception:
-        return None
-
-def _write_cache(ticker: str, series: pd.Series) -> None:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    series.to_csv(_cache_path(ticker), header=["Close"])
-
-def _fetch_alpha_vantage(ticker: str, start: datetime, end: datetime) -> Optional[pd.Series]:
-    """Fetch daily adjusted close from Alpha Vantage."""
-    import urllib.request
-    
-    av_key = os.getenv("ALPHA_VANTAGE_KEY")
-    if not av_key:
-        return None
-
-    # Alpha Vantage uses different ticker format for SGX — strip .SI suffix
-    av_ticker = ticker.replace(".SI", ".SI")  # SGX tickers work as-is
-    
-    # Map known aux tickers
-    ticker_map = {
-        "SGDUSD=X": "USDSGD",   # AV uses inverted pair, we'll flip later
-        "GC=F":     "XAUUSD",   # Gold in USD
-        "AAXJ":     "AAXJ",
-        "AXJR":     "AXJR",
-        "ES3.SI":   "ES3.SI",
-    }
-    av_ticker = ticker_map.get(ticker, ticker)
-    invert = ticker == "SGDUSD=X"  # AV gives USDSGD, we need SGDUSD
-
-    url = (
-        f"https://www.alphavantage.co/query"
-        f"?function=TIME_SERIES_DAILY"
-        f"&symbol={av_ticker}"
-        f"&outputsize=full"
-        f"&apikey={av_key}"
-        f"&datatype=csv"
-    )
-
-    try:
-        with urllib.request.urlopen(url, timeout=15) as resp:
-            lines = resp.read().decode("utf-8").splitlines()
-        
-        if not lines or "timestamp" not in lines[0]:
-            return None
-
-        reader = csv.DictReader(lines)
-        rows = [(r["timestamp"], float(r["close"])) for r in reader]
-        if not rows:
-            return None
-
-        idx = pd.to_datetime([r[0] for r in rows])
-        vals = [r[1] for r in rows]
-        s = pd.Series(vals, index=idx, name=ticker).sort_index()
-
-        if invert:
-            s = 1.0 / s  # flip USDSGD → SGDUSD
-
-        # Filter to requested window
-        s = s[(s.index >= pd.Timestamp(start)) & (s.index <= pd.Timestamp(end))]
-        return s if len(s) >= 20 else None
-
-    except Exception as e:
-        logging.warning(f"Alpha Vantage fetch failed for {ticker}: {e}")
         return None
 
 
@@ -210,21 +121,14 @@ def _rolling_ols_params(
 # ─── Data Fetching ────────────────────────────────────────────────────────────
 
 def _download_one(ticker: str, start: datetime, end: datetime) -> Optional[pd.Series]:
-    # Serve from disk cache if fresh
-    if _cache_is_fresh(ticker):
-        cached = _read_cache(ticker)
-        if cached is not None:
-            filtered = cached[(cached.index >= pd.Timestamp(start)) & 
-                              (cached.index <= pd.Timestamp(end))]
-            return filtered if len(filtered) >= 20 else None
-
-    # Fetch from Alpha Vantage
-    series = _fetch_alpha_vantage(ticker, start, end)
-    if series is not None and len(series) >= 20:
-        _write_cache(ticker, series)
-        return series
-
-    return None
+    cached = _read_cache(ticker)
+    if cached is None:
+        return None
+    filtered = cached[
+        (cached.index >= pd.Timestamp(start)) &
+        (cached.index <= pd.Timestamp(end))
+    ]
+    return filtered if len(filtered) >= 20 else None
 
 
 def fetch_sora_proxy(start: datetime, end: datetime) -> Tuple[Optional[pd.Series], str]:
