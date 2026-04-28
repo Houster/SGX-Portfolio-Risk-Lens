@@ -90,7 +90,7 @@ def _fetch_alpha_vantage(ticker: str, start: datetime, end: datetime) -> Optiona
 
     url = (
         f"https://www.alphavantage.co/query"
-        f"?function=TIME_SERIES_DAILY_ADJUSTED"
+        f"?function=TIME_SERIES_DAILY"
         f"&symbol={av_ticker}"
         f"&outputsize=full"
         f"&apikey={av_key}"
@@ -105,7 +105,7 @@ def _fetch_alpha_vantage(ticker: str, start: datetime, end: datetime) -> Optiona
             return None
 
         reader = csv.DictReader(lines)
-        rows = [(r["timestamp"], float(r["adjusted_close"])) for r in reader]
+        rows = [(r["timestamp"], float(r["close"])) for r in reader]
         if not rows:
             return None
 
