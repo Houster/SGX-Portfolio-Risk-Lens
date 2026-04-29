@@ -37,7 +37,7 @@ TICKERS = [
     "558.SI", "5IF.SI", "F9D.SI", "43B.SI", "42S.SI",
     "CY6U.SI", "8K7.SI", "Q5T.SI", "5TP.SI", "5WA.SI",
     # Aux tickers (benchmark, FX, gold, regional ETFs)
-    "ES3.SI", "SGDUSD=X", "GC=F", "AAXJ", "AXJR",
+    "ES3.SI", "SGDUSD=X", "GC=F", "AAXJ",
     # SORA proxy candidates
     "2YY=R", "SG10YT=RR", "A35.SI", "^IRX",
 ]

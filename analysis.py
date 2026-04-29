@@ -39,7 +39,7 @@ def _read_cache(ticker: str) -> Optional[pd.Series]:
 PERIOD_DAYS: Dict[str, int] = {"1y": 365, "3y": 1095, "5y": 1825}
 
 # Extra tickers always fetched alongside portfolio tickers
-AUX_TICKERS = ["ES3.SI", "SGDUSD=X", "GC=F", "AAXJ", "AXJR"]
+AUX_TICKERS = ["ES3.SI", "SGDUSD=X", "GC=F", "AAXJ"]
 
 # Waterfall of SORA proxy candidates, tried in order.
 # Third element: invert=True means the series moves inversely to rates
