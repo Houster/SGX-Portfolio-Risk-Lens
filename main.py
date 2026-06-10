@@ -40,9 +40,7 @@ app.add_middleware(
 # In-memory price cache — key: sha256 of (sorted_tickers, period)
 _price_cache: Dict[str, Dict[str, Any]] = {}
 
-# Vercel serves public/index.html as a static asset; this fallback is for local dev.
-_base = Path(__file__).parent
-FRONTEND_PATH = _base / "public" / "index.html" if (_base / "public" / "index.html").exists() else _base / "index.html"
+FRONTEND_PATH = Path(__file__).parent / "index.html"
 
 
 # ─── Request / Response Models ────────────────────────────────────────────────
