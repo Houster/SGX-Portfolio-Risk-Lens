@@ -30,14 +30,6 @@ import universe as univ
 app = FastAPI(title="SGX Portfolio Risk Lens", version="1.0.0")
 
 
-@app.on_event("startup")
-async def startup_prefetch():
-    """Pre-fetch universe price data in a background thread at startup."""
-    import threading
-    t = threading.Thread(target=univ.prefetch_universe, kwargs={"timeout_seconds": 60}, daemon=True)
-    t.start()
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -48,7 +40,9 @@ app.add_middleware(
 # In-memory price cache — key: sha256 of (sorted_tickers, period)
 _price_cache: Dict[str, Dict[str, Any]] = {}
 
-FRONTEND_PATH = Path(__file__).parent / "index.html"
+# Vercel serves public/index.html as a static asset; this fallback is for local dev.
+_base = Path(__file__).parent
+FRONTEND_PATH = _base / "public" / "index.html" if (_base / "public" / "index.html").exists() else _base / "index.html"
 
 
 # ─── Request / Response Models ────────────────────────────────────────────────
