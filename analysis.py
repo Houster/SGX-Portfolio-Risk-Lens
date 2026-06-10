@@ -24,6 +24,24 @@ def _cache_path(ticker: str) -> Path:
     safe = ticker.replace("=", "_").replace("^", "_").replace("/", "_")
     return CACHE_DIR / f"{safe}.csv"
 
+def _fetch_live(ticker: str, days: int = 1915) -> Optional[pd.Series]:
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        df = yf.download(ticker, start=start, auto_adjust=True, progress=False)
+        if df.empty or "Close" not in df.columns:
+            return None
+        s = df["Close"].dropna()
+        if len(s) < 20:
+            return None
+        s.index = s.index.tz_localize(None) if s.index.tz else s.index
+        s.name = ticker
+        return s
+    except Exception:
+        return None
+
+
 def _read_cache(ticker: str) -> Optional[pd.Series]:
     try:
         df = pd.read_csv(_cache_path(ticker), index_col=0, parse_dates=True)
@@ -33,7 +51,7 @@ def _read_cache(ticker: str) -> Optional[pd.Series]:
         s.name = ticker
         return s
     except Exception:
-        return None
+        return _fetch_live(ticker)
 
 
 PERIOD_DAYS: Dict[str, int] = {"1y": 365, "3y": 1095, "5y": 1825}
