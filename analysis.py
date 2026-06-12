@@ -26,11 +26,22 @@ def _cache_path(ticker: str) -> Path:
 
 def _fetch_live(ticker: str, days: int = 1915) -> Optional[pd.Series]:
     try:
+        import requests
         import yfinance as yf
-        from datetime import datetime, timedelta
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        df = yf.download(ticker, start=start, auto_adjust=True, progress=False)
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+        period = "5y" if days >= 1825 else ("3y" if days >= 1095 else "1y")
+        df = yf.Ticker(ticker, session=session).history(period=period, auto_adjust=True)
         if df.empty or "Close" not in df.columns:
+            logging.warning(f"_fetch_live: no data for {ticker}")
             return None
         s = df["Close"].dropna()
         if len(s) < 20:
@@ -38,7 +49,8 @@ def _fetch_live(ticker: str, days: int = 1915) -> Optional[pd.Series]:
         s.index = s.index.tz_localize(None) if s.index.tz else s.index
         s.name = ticker
         return s
-    except Exception:
+    except Exception as e:
+        logging.warning(f"_fetch_live {ticker}: {e}")
         return None
 
 

@@ -1,6 +1,6 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
-yfinance==0.2.50
+yfinance==0.2.61
 pandas==2.2.3
 numpy==2.2.5
 anthropic==0.40.0
