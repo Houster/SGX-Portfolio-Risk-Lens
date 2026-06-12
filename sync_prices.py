@@ -21,7 +21,7 @@ import yfinance as yf
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-LOCAL_CACHE = Path.home() / "price_cache"
+LOCAL_CACHE = Path(__file__).parent / "price_cache"
 
 # All tickers the server needs: universe + aux + SORA candidates
 TICKERS = [
